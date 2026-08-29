@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Roll20 Custom Handout Editer
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.0
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정)
 // @match        https://app.roll20.net/editor/*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Handout%20Editer.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Handout%20Editer.js
 // ==/UserScript==
 
 /* ==========================================================================
@@ -65,8 +67,6 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 공통 유틸 - 선택영역(커서) 저장/복원 ]
-       팝업이나 드롭다운을 클릭하면 에디터에서 포커스가 빠지면서 커서 위치가
-       사라지므로, 클릭하기 전 위치를 미리 기억해뒀다가 다시 복원해서 사용한다.
        ========================================================================== */
     let savedRange = null;
 
@@ -87,14 +87,12 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 가름줄(<hr>) 선택 상태 추적 ]
-       가름줄(<hr>)은 안이 비어있는 요소라 커서를 그 '안'에 놓을 수 없어서, 글자색/표
-       배경색처럼 selection으로 찾지 않고 클릭해서 선택한 <hr>을 따로 기억해둔다.
        ========================================================================== */
     let selectedHrEl = null;
 
     document.addEventListener('click', (e) => {
         const editor = e.target.closest && e.target.closest('.note-editable');
-        if (!editor) return; // 편집창 밖 클릭(툴바 등)에서는 선택 상태를 유지
+        if (!editor) return;
 
         if (e.target.tagName === 'HR') {
             if (selectedHrEl && selectedHrEl !== e.target) selectedHrEl.style.outline = '';
@@ -109,7 +107,6 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 웹폰트 로드 ]
-       CUSTOM_FONTS 목록의 폰트를 <link>/<style>로 문서에 주입한다.
        ========================================================================== */
     const loadWebFonts = () => {
         CUSTOM_FONTS.forEach(font => {
@@ -131,8 +128,6 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 붙여넣기 시 서식 정리 ]
-       외부(워드/한글 등)에서 복사한 굵은 글씨가 <b>/style="font-weight:bold"
-       형태로 들어와도 롤20 에디터가 인식하는 <strong> 태그로 통일해서 붙여넣는다.
        ========================================================================== */
     const handlePasteFormatting = (e) => {
         const activeEl = document.activeElement;
@@ -176,9 +171,6 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 텍스트 스타일 적용 - 글자색/글자 배경색/폰트 공통 ]
-       선택 영역이 있으면 감싸서 스타일을 입히고, 커서만 있는(선택 없음) 경우엔
-       투명한 폭 0 문자(zero-width space)를 심어서 "다음 입력할 글자"에 스타일이
-       적용되도록 한다.
        ========================================================================== */
     const applyTextStyle = (styleProperty, value) => {
         restoreSelection();
@@ -208,18 +200,15 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ]
-       표 칸 합치기/나누기, 배경색·테두리 다중 적용 기능이 공통으로 쓰는 유틸.
        ========================================================================== */
 
-    // 표 전체를 (rowspan/colspan까지 감안한) 좌표 격자로 만든다.
-    // grid[행][열] = 그 위치를 차지하는 실제 td/th 엘리먼트 (합쳐진 칸은 여러 좌표에 같은 엘리먼트가 들어감)
     const buildTableGrid = (table) => {
         const grid = [];
         Array.from(table.rows).forEach((row, r) => {
             if (!grid[r]) grid[r] = [];
             let c = 0;
             Array.from(row.cells).forEach(cell => {
-                while (grid[r][c]) c++; // 위쪽 행의 rowspan으로 이미 채워진 칸은 건너뜀
+                while (grid[r][c]) c++;
                 const rowspan = cell.rowSpan || 1;
                 const colspan = cell.colSpan || 1;
                 for (let rr = r; rr < r + rowspan; rr++) {
@@ -234,7 +223,6 @@ const CUSTOM_FONTS = [
         return grid;
     };
 
-    // 격자 안에서 어떤 칸(cell)이 처음(왼쪽 위)으로 나타나는 좌표를 찾는다.
     const findCellTopLeft = (grid, cell) => {
         for (let r = 0; r < grid.length; r++) {
             const row = grid[r] || [];
@@ -245,7 +233,6 @@ const CUSTOM_FONTS = [
         return null;
     };
 
-    // 현재 선택 영역에 걸쳐 있는 표의 칸(td/th)들을 전부 찾는다.
     const getSelectedTableCells = () => {
         const selection = window.getSelection();
         if (!selection.rangeCount) return [];
@@ -256,7 +243,6 @@ const CUSTOM_FONTS = [
             return node.closest ? node.closest('td, th') : null;
         };
 
-        // 파이어폭스 스타일: 칸마다 range가 따로 생기는 경우.
         if (selection.rangeCount > 1) {
             const cells = new Set();
             for (let i = 0; i < selection.rangeCount; i++) {
@@ -488,7 +474,6 @@ const CUSTOM_FONTS = [
         document.execCommand('insertHTML', false, hrHTML);
     };
 
-    // 가름줄 버튼을 누르면 뜨는 팝업: 레이아웃 오버플로우 수정 적용 영역
     const openHrInsertPopover = (editor, anchorBtn) => {
         document.getElementById('r20-hr-insert-popover')?.remove();
 
