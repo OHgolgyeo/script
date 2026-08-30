@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -38,7 +38,7 @@ const DEFAULT_CUSTOM_FONTS = [
     { name: 'Pretendard', url: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css', family: 'Pretendard' }
 ];
 
-const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48];
+const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
 
 const R20_FONTS_STORAGE_KEY = 'r20CustomEditor_customFonts';
 const R20_FONT_SIZES_STORAGE_KEY = 'r20CustomEditor_customFontSizes';
@@ -91,7 +91,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.5');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.6');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -1693,22 +1693,7 @@ window.r20CustomEditorResetFonts = function() {
                     <option value="" disabled selected>크기</option>
                     ${CUSTOM_FONT_SIZES.map(size => `<option value="${size}px">${size}px</option>`).join('')}
                 </select>
-                <button type="button" class="custom-font-settings-btn btn btn-default btn-sm" title="폰트 목록 설정" style="
-                    height: 30px !important;
-                    line-height: 20px !important;
-                    width: 26px;
-                    font-size: 13px;
-                    padding: 3px 0;
-                    margin: 0;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    background: #ffffff;
-                    color: #333333;
-                    cursor: pointer;
-                    outline: none;
-                    box-shadow: none;
-                    vertical-align: middle;
-                ">⚙</button>
+                <button type="button" class="note-btn btn btn-default btn-sm custom-font-settings-btn" title="폰트 목록 설정" aria-label="폰트 목록 설정">⚙</button>
             `;
 
             const selectEl = wrapper.querySelector('.custom-font-select');
