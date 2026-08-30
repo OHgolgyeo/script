@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -24,7 +24,7 @@ const CUSTOM_FONTS = [
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.32');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.1');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -98,6 +98,10 @@ const CUSTOM_FONTS = [
 
     /* ==========================================================================
        [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
+       - 팝업을 새로 열 때마다 기존 걸 remove() 하고 다시 만드는 방식만 쓰면,
+         버튼을 다시 눌러도 "닫혔다가 즉시 재생성"되는 것처럼 보여서 실제로는
+         닫히지 않는 것처럼 느껴진다. 이미 열려 있으면 다시 열지 않고 그냥
+         닫기만 하도록 감싸주는 공통 함수.
        ========================================================================== */
     const toggleCustomPopover = (popoverId, openFn) => {
         const existing = document.getElementById(popoverId);
@@ -1073,9 +1077,6 @@ const CUSTOM_FONTS = [
                 splitSelectedTableCell();
             });
 
-            // 별도의 btn-group을 새로 안 만들고, 행/열/표 삭제 버튼들이 속한
-            // 그룹 안에 바로 끼워 넣는다. 그러면 "열 추가 | 칸 합치기, 나누기,
-            // 행 삭제, 열 삭제, 표 삭제"처럼 구분선 없이 한 그룹으로 보인다.
             const deleteGroup = rowDeleteBtn.closest('.btn-group') || rowDeleteBtn.parentNode;
             deleteGroup.insertBefore(mergeBtn, rowDeleteBtn);
             deleteGroup.insertBefore(splitBtn, rowDeleteBtn);
@@ -1255,9 +1256,6 @@ const CUSTOM_FONTS = [
     const openImageInsertPopover = (editor, anchorBtn) => {
         document.getElementById('r20-img-insert-popover')?.remove();
 
-        // 팝업이 열리는 사이 (특히 "파일 첨부"로 OS 파일 선택창이 뜨는 동안)
-        // 커서 위치가 유실될 수 있어, HR 팝업과 동일하게 여는 시점에 명시적으로
-        // 한번 더 저장해둔다 - 파일 선택 후 이미지가 엉뚱한 곳에 삽입되는 문제 예방.
         saveSelection();
 
         const rect = anchorBtn.getBoundingClientRect();
@@ -1332,11 +1330,6 @@ const CUSTOM_FONTS = [
             );
             if (!linkBtn) return;
 
-            // 예전에는 이 버튼을 별도의 .note-btn-group으로 감싸서 note-insert
-            // 그룹 안에 "중첩 그룹"으로 끼워 넣었는데, 그 감싸는 div 자체가
-            // 여백(margin)을 추가로 잡아먹어서 이미지/링크/링크제거 묶음이
-            // 툴바 첫 줄에 들어갈 폭을 살짝 초과해 둘째 줄로 밀려났다. link/unlink
-            // 버튼처럼 별도 wrapper 없이 순수 버튼으로 끼워 넣어 그 여백을 없앤다.
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'note-btn btn btn-default btn-sm custom-img-upload-btn';
@@ -1678,22 +1671,14 @@ const CUSTOM_FONTS = [
        [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ]
        ========================================================================== */
     const selectedHandoutIds = new Set();
-    // Roll20 저널 패널은 최소 두 가지 DOM 구조를 쓴다: 신형(li.nj-item) / 구형(li.journalitem, dd-list 기반).
-    // 둘 다 지원하도록 선택자를 함께 둔다. 핸드아웃/캐릭터 둘 다 이 구조를 공유한다.
     const JOURNAL_ITEM_SELECTOR = 'li.journalitem[data-itemid], li.nj-item[data-itemid]';
     const JOURNAL_NAME_SELECTOR = '.namecontainer, .nj-name';
 
-    // 우리 커스텀 메뉴 항목의 mousedown을 stopPropagation 하면, Roll20 자신이
-    // (아마 document의 mousedown/click에 바인딩해뒀을) 메뉴 닫기 로직까지 같이
-    // 막혀버려서 메뉴가 화면에 계속 남는 경우가 있다. 그래서 우리가 직접 메뉴를
-    // 닫아준다 (인라인 style.display='none' - jQuery의 .show()가 다음에 다시 열 때
-    // 이 값을 덮어쓰므로 다음 우클릭에는 정상적으로 다시 뜬다).
     const hideD20ContextMenu = (fromEl) => {
         const menu = fromEl.closest('.d20contextmenu');
         if (menu) menu.style.display = 'none';
     };
 
-    // 핸드아웃과 캐릭터 두 콜렉션을 모두 조회해서 해당 id의 모델을 찾는다.
     const getHandoutModel = (id) => {
         if (!id || !window.Campaign) return null;
         const handouts = window.Campaign.handouts;
@@ -1717,7 +1702,6 @@ const CUSTOM_FONTS = [
         });
     };
 
-    // Ctrl+Shift+클릭 범위 선택의 기준점(마지막으로 단독 Ctrl+클릭한 항목).
     let lastHandoutAnchorId = null;
 
     const clearHandoutSelection = () => {
@@ -1727,7 +1711,6 @@ const CUSTOM_FONTS = [
         syncJournalSelectionStyles();
     };
 
-    // 목록에 실제로 표시된 순서(DOM 순서)를 기준으로 범위를 계산한다.
     const getOrderedJournalIds = () => Array.from(document.querySelectorAll(JOURNAL_ITEM_SELECTOR))
         .map(el => el.dataset.itemid)
         .filter(Boolean);
@@ -1778,10 +1761,6 @@ const CUSTOM_FONTS = [
         clearHandoutSelection();
     };
 
-    // Roll20 우클릭 메뉴도 저널 패널과 마찬가지로 두 가지 구현이 있다:
-    // 구형(#journalitemmenu, div.d20contextmenu > ul > li 구조 - 자체 "삭제" 항목 있음) /
-    // 신형(#journal-context-menu, div > div.context-menu-item 구조).
-    // 우리가 추가하는 항목은 Roll20 자체 "삭제"(단일 삭제)와 헷갈리지 않도록 문구를 다르게 둔다.
     const injectJournalDeleteMenuItem = () => {
         const legacyMenu = document.getElementById('journalitemmenu');
         const newMenu = document.getElementById('journal-context-menu');
@@ -1801,10 +1780,6 @@ const CUSTOM_FONTS = [
         if (!deleteItem) {
             deleteItem = document.createElement(legacyMenu ? 'li' : 'div');
             deleteItem.className = legacyMenu ? 'r20-custom-delete-item' : 'context-menu-item r20-custom-delete-item';
-            // 클릭 리스너는 여기 안 붙인다 - Roll20이 메뉴 클릭 시(특히 구형 메뉴는
-            // mousedown 시점에) 메뉴 자체를 즉시 지워버려서 뒤이은 click 이벤트가
-            // 아예 발생하지 않는 경우가 있다. 그래서 아래 document 레벨 mousedown
-            // 캡처 단계에서 이 항목을 직접 감지해 처리한다.
             container.appendChild(deleteItem);
         }
 
@@ -1829,7 +1804,6 @@ const CUSTOM_FONTS = [
         document.querySelectorAll(LIBRARY_ITEM_SELECTOR).forEach(item => {
             const nameEl = item.querySelector(LIBRARY_NAME_SELECTOR);
             if (!nameEl) return;
-            // CSS 규칙이 .namecontainer 클래스를 공유하므로 저널용 클래스를 그대로 재사용한다.
             if (selectedImageIds.has(item.dataset.imageid)) {
                 nameEl.classList.add('r20-journal-selected-name');
             } else {
@@ -1838,7 +1812,6 @@ const CUSTOM_FONTS = [
         });
     };
 
-    // Ctrl+Shift+클릭 범위 선택의 기준점(마지막으로 단독 Ctrl+클릭한 항목).
     let lastImageAnchorId = null;
 
     const clearImageSelection = () => {
@@ -1848,7 +1821,6 @@ const CUSTOM_FONTS = [
         syncLibrarySelectionStyles();
     };
 
-    // 목록에 실제로 표시된 순서(DOM 순서)를 기준으로 범위를 계산한다.
     const getOrderedImageIds = () => Array.from(document.querySelectorAll(LIBRARY_ITEM_SELECTOR))
         .map(el => el.dataset.imageid)
         .filter(Boolean);
@@ -1898,8 +1870,6 @@ const CUSTOM_FONTS = [
             alert('이미지 삭제 요청이 실패했습니다. 콘솔(F12)을 확인해주세요.');
         };
 
-        // Roll20이 jQuery를 전역에 로드해두므로, 실제 삭제 버튼과 동일한 방식(쿠키
-        // 인증 포함한 같은 오리진 요청)으로 보내기 위해 가능하면 jQuery를 사용한다.
         const $ = window.jQuery || window.$;
         if ($ && typeof $.post === 'function') {
             $.post('/image_library/permdelete', { ids: { imageids: targets } })
@@ -1920,9 +1890,6 @@ const CUSTOM_FONTS = [
         }
     };
 
-    // 라이브러리 우클릭 메뉴(#librarycopymenu)는 저널 구형 메뉴(#journalitemmenu)와
-    // 동일하게 div.d20contextmenu > ul > li 구조이고, 자체 "삭제"(단일 삭제) 항목이
-    // 있으므로 헷갈리지 않도록 문구를 다르게 둔다.
     const injectLibraryDeleteMenuItem = () => {
         const menu = document.getElementById('librarycopymenu');
         if (!menu) return;
@@ -1940,9 +1907,6 @@ const CUSTOM_FONTS = [
         if (!deleteItem) {
             deleteItem = document.createElement('li');
             deleteItem.className = 'r20-custom-image-delete-item';
-            // 저널과 마찬가지로 click 리스너는 붙이지 않는다 - 메뉴가 mousedown
-            // 시점에 닫혀버려서 click이 발생하지 않는다. document 레벨 mousedown
-            // 캡처 단계에서 이 항목을 직접 감지해 처리한다.
             container.appendChild(deleteItem);
         }
 
@@ -1963,9 +1927,6 @@ const CUSTOM_FONTS = [
     document.addEventListener('dragover', handleEditorDragOver, true);
     document.addEventListener('drop', handleEditorImageDrop, true);
 
-    // 실제로 핸드아웃인지 여부와 무관하게, 저널 항목(li.journalitem 구형 / li.nj-item 신형)
-    // 위에서 벌어진 Ctrl/Cmd 클릭은 일단 전부 가로막는다 (열기 여부 판단을 handouts
-    // 콜렉션 조회 성공 여부에 의존시키지 않기 위함).
     const handleJournalCtrlInteraction = (e) => {
         if (!(e.ctrlKey || e.metaKey)) return false;
         const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
@@ -1977,11 +1938,6 @@ const CUSTOM_FONTS = [
         return item;
     };
 
-    // Roll20이 항목 열기를 mousedown/click 중 어느 단계에서 처리하든 걸러내기 위해
-    // 두 단계 모두에서, document 캡처 단계에서 가로챈다 (mousedown에서 실제 토글을 수행).
-    // mousedown 시점과 click 시점 사이에 Ctrl 키를 먼저 뗄 수도 있으므로(click의
-    // ctrlKey가 false로 찍힘), click 시점의 ctrlKey 값은 신뢰하지 않고 이 플래그로
-    // "방금 mousedown에서 이미 처리한 상호작용인지"를 직접 추적한다.
     let journalCtrlMousedownHandled = false;
 
     document.addEventListener('mousedown', (e) => {
@@ -1998,8 +1954,6 @@ const CUSTOM_FONTS = [
         const item = handleJournalCtrlInteraction(e);
         if (item) {
             const id = item.dataset.itemid;
-            // Ctrl+Shift+클릭: 마지막 기준점부터 이 항목까지 범위 전체를 선택에
-            // 추가한다(탐색기 스타일). 기준점이 없으면 그냥 단독 토글로 처리.
             if (e.shiftKey && lastHandoutAnchorId) {
                 selectHandoutRange(lastHandoutAnchorId, id);
             } else {
@@ -2044,9 +1998,6 @@ const CUSTOM_FONTS = [
         setTimeout(injectJournalDeleteMenuItem, 0);
     }, true);
 
-    // 라이브러리 이미지 목록(li[data-imageid])에 대한 Ctrl+클릭 다중 선택 /
-    // 우클릭 일괄 삭제. 저널 쪽과 동일한 이유(메뉴가 mousedown에 닫힘, click의
-    // ctrlKey가 늦게 풀릴 수 있음)로 동일한 mousedown 우선 패턴을 사용한다.
     const handleLibraryCtrlInteraction = (e) => {
         if (!(e.ctrlKey || e.metaKey)) return false;
         const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
@@ -2074,8 +2025,6 @@ const CUSTOM_FONTS = [
         const item = handleLibraryCtrlInteraction(e);
         if (item) {
             const id = item.dataset.imageid;
-            // Ctrl+Shift+클릭: 마지막 기준점부터 이 항목까지 범위 전체를 선택에
-            // 추가한다(탐색기 스타일). 기준점이 없으면 그냥 단독 토글로 처리.
             if (e.shiftKey && lastImageAnchorId) {
                 selectImageRange(lastImageAnchorId, id);
             } else {
