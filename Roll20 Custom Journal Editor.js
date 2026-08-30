@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.17
+// @version      1.18
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -160,10 +160,6 @@ window.r20CustomEditorResetFonts = function() {
 
     /* ==========================================================================
        [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
-       - 팝업을 새로 열 때마다 기존 걸 remove() 하고 다시 만드는 방식만 쓰면,
-         버튼을 다시 눌러도 "닫혔다가 즉시 재생성"되는 것처럼 보여서 실제로는
-         닫히지 않는 것처럼 느껴진다. 이미 열려 있으면 다시 열지 않고 그냥
-         닫기만 하도록 감싸주는 공통 함수.
        ========================================================================== */
     const toggleCustomPopover = (popoverId, openFn) => {
         const existing = document.getElementById(popoverId);
@@ -221,11 +217,7 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     /* ==========================================================================
-       [ 폰트 지정용 CSS 클래스 동기화 - Roll20이 핸드아웃 저장 시 style 속성의
-         font-family(및 <font> 태그)를 서버 단에서 걸러내는 것으로 확인됨(!important를
-         줘도, <font face>로 우회해도 저장 후 사라짐). class 속성은 순수한 이름표라
-         이 필터에 안 걸리므로, 실제 폰트 지정은 여기서 전역 <style>로 주입하는
-         class 규칙이 담당하고, 저장되는 내용에는 class 이름만 남긴다 ]
+       [ 폰트 지정용 CSS 클래스 동기화 ]
        ========================================================================== */
     const FONT_CLASS_PREFIX = 'r20-cf-';
 
@@ -344,14 +336,6 @@ window.r20CustomEditorResetFonts = function() {
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlData, 'text/html');
 
-            // 구글 문서/워드 등에서 붙여넣으면 정렬·폰트 같은 서식이 인라인 style이
-            // 아니라 <style> 안의 클래스 규칙(.c1{text-align:center} 등)으로 딸려오는
-            // 경우가 많다. 이 <style>을 그대로 두면 에디터 안에 살아있는 스타일시트가
-            // 되어 버려서 이후 폰트를 다시 지정해도 그 클래스(특히 !important가 붙은
-            // 경우)가 계속 이기고, 그렇다고 무작정 <style>/class를 지워버리면 정렬 같은
-            // 서식 정보 자체가 통째로 사라진다. 그래서 실제 브라우저 렌더링 엔진으로
-            // 클래스 규칙이 각 요소에 어떤 값으로 적용되는지 계산해서 인라인 style로
-            // "구워넣은" 다음에 <style>/class를 지운다 — 서식은 유지하고 클래스만 없앤다.
             if (doc.querySelector('style, link[rel="stylesheet"]')) {
                 const stage = document.createElement('div');
                 stage.style.cssText = 'position:fixed; left:-99999px; top:0; width:800px; visibility:hidden; pointer-events:none;';
@@ -441,15 +425,6 @@ window.r20CustomEditorResetFonts = function() {
         const range = selection.getRangeAt(0);
         const cssProp = toCssPropertyName(styleProperty);
 
-        // 폰트(font-family)는 Roll20 서버가 핸드아웃 저장 시 style 속성이든
-        // <font face="..."> 속성이든 전부 걸러내는 것으로 확인됨(!important,
-        // legacy font 태그 둘 다 저장 후 다시 불러오면 사라짐). 반면 class 속성은
-        // 그 자체로는 아무 스타일 정보가 없는 순수한 이름표라 이 필터를 통과한다.
-        // 그래서 폰트는 저장되는 내용엔 class 이름표만 남기고, 실제 font-family는
-        // 우리 스크립트가 전역으로 주입해두는 class 규칙(syncFontClassCSS)이
-        // 화면에 그려질 때마다 입혀준다. style/face는 즉시 반영용으로 같이 남겨두되
-        // (저장 전 미리보기, 혹시 모를 다른 경로 대비) 실제로 저장 후에도 살아남는
-        // 건 class 쪽이다.
         const useFontTag = styleProperty === 'fontFamily';
         const fontClass = useFontTag ? fontFamilyToClassSlug(value) : null;
 
@@ -462,11 +437,6 @@ window.r20CustomEditorResetFonts = function() {
             }
             span.appendChild(range.extractContents());
 
-            // 선택 영역 안쪽 요소에 이미 같은 속성의 인라인 스타일이 있으면
-            // (한 번 폰트/색을 바꾼 글을 다시 바꾸거나, 다른 프로그램에서 붙여넣어
-            // 자체 서식이 박혀있는 글인 경우) 안쪽 요소의 인라인 스타일이 바깥의
-            // 새 span보다 우선 적용돼서 새로 고른 값이 화면에 반영되지 않는다.
-            // 안쪽에 남아있는 같은 속성을 전부 지워서 새 값이 실제로 먹히게 한다.
             span.querySelectorAll('*').forEach(el => {
                 if (el.style && el.style[styleProperty]) {
                     el.style[styleProperty] = '';
@@ -993,12 +963,7 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     /* ==========================================================================
-       [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 -
-         구글독스 등에서 붙여넣을 때 div/table 같은 블록 요소 전체가 <strong> 등
-         인라인 태그 안에 통째로 들어가는 경우가 있음. 이러면 브라우저가 그 인라인
-         태그를 폭 0으로 취급해서 안의 블록 요소가 표 크기만큼 쪼그라들어버리고,
-         margin:auto 가운데 정렬이 무력화됨. 해당 태그가 가졌던 서식(굵게/기울임/
-         밑줄/색상)은 블록 자식에게 옮겨준 뒤, 태그 자체는 풀어서 제거함 ]
+       [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 ]
        ========================================================================== */
     const fixInvalidInlineWrapping = () => {
         const INLINE_SELECTOR = 'strong, b, em, i, u, font';
@@ -1049,8 +1014,7 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     /* ==========================================================================
-       [ 표 가운데 정렬 자동 보정 - 정렬값이 아예 없는 표(붙여넣기 등으로 유입된 표 포함)에
-         기본 가운데 정렬(margin:auto)을 적용. 편집창과 뷰어(읽기 전용 표시) 양쪽에서 동작 ]
+       [ 표 가운데 정렬 자동 보정 ]
        ========================================================================== */
     const normalizeTableAlignment = () => {
         const tables = document.querySelectorAll(
