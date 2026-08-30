@@ -100,10 +100,6 @@ const CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 6
 
     /* ==========================================================================
        [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
-       - 팝업을 새로 열 때마다 기존 걸 remove() 하고 다시 만드는 방식만 쓰면,
-         버튼을 다시 눌러도 "닫혔다가 즉시 재생성"되는 것처럼 보여서 실제로는
-         닫히지 않는 것처럼 느껴진다. 이미 열려 있으면 다시 열지 않고 그냥
-         닫기만 하도록 감싸주는 공통 함수.
        ========================================================================== */
     const toggleCustomPopover = (popoverId, openFn) => {
         const existing = document.getElementById(popoverId);
@@ -242,12 +238,6 @@ const CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 6
             const span = document.createElement('span');
             span.style[styleProperty] = value;
             span.appendChild(range.extractContents());
-
-            // 선택 영역 안쪽 요소에 이미 같은 속성의 인라인 스타일이 있으면
-            // (한 번 폰트/색을 바꾼 글을 다시 바꾸거나, 다른 프로그램에서 붙여넣어
-            // 자체 서식이 박혀있는 글인 경우) 안쪽 요소의 인라인 스타일이 바깥의
-            // 새 span보다 우선 적용돼서 새로 고른 값이 화면에 반영되지 않는다.
-            // 안쪽에 남아있는 같은 속성을 전부 지워서 새 값이 실제로 먹히게 한다.
             span.querySelectorAll('*').forEach(el => {
                 if (el.style && el.style[styleProperty]) {
                     el.style[styleProperty] = '';
