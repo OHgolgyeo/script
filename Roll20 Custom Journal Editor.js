@@ -23,12 +23,6 @@
            { name: '기본 폰트', url: '', family: 'inherit' },
            { name: '내 폰트', url: '웹폰트 css 주소(없으면 빈 문자열)', family: "'폰트이름', sans-serif" }
        ]);
-
-       r20CustomEditorSetFontSizes([10, 12, 14, 16, 20, 24]);
-
-       r20CustomEditorResetFonts(); // 저장된 값을 지우고 기본값으로 되돌리기
-
-     콘솔로 실행한 경우에는 페이지를 새로고침해야 반영됩니다.
    ========================================================================== */
 const DEFAULT_CUSTOM_FONTS = [
     { name: '기본 폰트', url: '', family: 'inherit' },
