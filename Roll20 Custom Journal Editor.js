@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.13
+// @version      1.14
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -91,7 +91,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.13');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.14');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -339,9 +339,17 @@ window.r20CustomEditorResetFonts = function() {
         const range = selection.getRangeAt(0);
         const cssProp = toCssPropertyName(styleProperty);
 
+        // 폰트(font-family)는 Roll20 서버가 핸드아웃 저장 시 style 속성에서 이 값만
+        // 걸러내는 것으로 확인됨(!important를 줘도 저장 후 다시 불러오면 사라짐).
+        // 옛날 방식인 <font face="..."> 속성은 별도의 HTML 속성이라 이 필터를
+        // 우회해서 살아남으므로, 폰트 적용 시엔 span 대신 font 태그 + face 속성을
+        // 함께 사용해 저장 후에도 폰트가 유지되게 한다.
+        const useFontTag = styleProperty === 'fontFamily';
+
         if (!selection.isCollapsed) {
-            const span = document.createElement('span');
+            const span = document.createElement(useFontTag ? 'font' : 'span');
             span.style.setProperty(cssProp, value, 'important');
+            if (useFontTag) span.setAttribute('face', value);
             span.appendChild(range.extractContents());
 
             // 선택 영역 안쪽 요소에 이미 같은 속성의 인라인 스타일이 있으면
@@ -363,8 +371,9 @@ window.r20CustomEditorResetFonts = function() {
 
             range.insertNode(span);
         } else {
-            const span = document.createElement('span');
+            const span = document.createElement(useFontTag ? 'font' : 'span');
             span.style.setProperty(cssProp, value, 'important');
+            if (useFontTag) span.setAttribute('face', value);
             span.innerHTML = '&#8203;';
             range.insertNode(span);
 
