@@ -21,7 +21,7 @@ const CUSTOM_FONTS = [
     { name: 'Pretendard', url: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css', family: 'Pretendard' }
 ];
 
-const CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48];
+const CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
 
 (function() {
     'use strict';
