@@ -1,13 +1,13 @@
 // ==UserScript==
-// @name         Roll20 Custom Journal Editor
+// @name         Roll20 Custom Journal Editor 프로 버전
 // @namespace    http://tampermonkey.net/
-// @version      1.17
+// @version      1.18
 // @author       오골계 (https://x.com/5golgyeo)
-// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 글자 크기 지정 및 목록 설정창을 통한 크기 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제) [폰트(글꼴) 지정 기능은 Roll20 저장 시 서버가 걸러내 저장 후 사라지는 문제가 있어 이 버전에는 포함하지 않았습니다. 폰트 지정이 저장 후에도 유지되는 프로 버전이 별도로 있습니다.]
+// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제) [프로 버전: 폰트 지정이 저장 후에도 유지됩니다. 동봉된 R20FontSync.js를 Roll20 Pro의 API Scripts에 함께 설치해야 정상 동작합니다.]
 // @match        https://app.roll20.net/editor/*
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
-// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20%ED%94%84%EB%A1%9C%20%EB%B2%84%EC%A0%84.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20%ED%94%84%EB%A1%9C%20%EB%B2%84%EC%A0%84.js
 // ==/UserScript==
 
 /* ==========================================================================
@@ -30,8 +30,17 @@
 
      콘솔로 실행한 경우에는 페이지를 새로고침해야 반영됩니다.
    ========================================================================== */
+const DEFAULT_CUSTOM_FONTS = [
+    { name: '기본 폰트', url: '', family: 'inherit' },
+    { name: '나눔고딕', url: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap', family: "'Nanum Gothic', sans-serif" },
+    { name: '나눔명조', url: 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap', family: "'Nanum Myeongjo', serif" },
+    { name: 'Gmarket Sans', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff', family: 'GmarketSansMedium' },
+    { name: 'Pretendard', url: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css', family: 'Pretendard' }
+];
+
 const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
 
+const R20_FONTS_STORAGE_KEY = 'r20CustomEditor_customFonts';
 const R20_FONT_SIZES_STORAGE_KEY = 'r20CustomEditor_customFontSizes';
 
 function r20LoadFromStorage(key, defaults) {
@@ -52,7 +61,17 @@ function r20LoadFromStorage(key, defaults) {
     return defaults;
 }
 
+let CUSTOM_FONTS = r20LoadFromStorage(R20_FONTS_STORAGE_KEY, DEFAULT_CUSTOM_FONTS);
 let CUSTOM_FONT_SIZES = r20LoadFromStorage(R20_FONT_SIZES_STORAGE_KEY, DEFAULT_CUSTOM_FONT_SIZES);
+
+window.r20CustomEditorSetFonts = function(fonts) {
+    if (!Array.isArray(fonts) || fonts.length === 0) {
+        console.error('[R20-Custom-Editor] fonts는 비어있지 않은 배열이어야 합니다.');
+        return;
+    }
+    localStorage.setItem(R20_FONTS_STORAGE_KEY, JSON.stringify(fonts));
+    console.log('[R20-Custom-Editor] 폰트 목록이 저장되었습니다. 페이지를 새로고침하세요.');
+};
 
 window.r20CustomEditorSetFontSizes = function(sizes) {
     if (!Array.isArray(sizes) || sizes.length === 0) {
@@ -64,14 +83,15 @@ window.r20CustomEditorSetFontSizes = function(sizes) {
 };
 
 window.r20CustomEditorResetFonts = function() {
+    localStorage.removeItem(R20_FONTS_STORAGE_KEY);
     localStorage.removeItem(R20_FONT_SIZES_STORAGE_KEY);
-    console.log('[R20-Custom-Editor] 폰트 크기 설정이 기본값으로 초기화되었습니다. 페이지를 새로고침하세요.');
+    console.log('[R20-Custom-Editor] 폰트 설정이 기본값으로 초기화되었습니다. 페이지를 새로고침하세요.');
 };
 
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.17');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.16 (프로 버전)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -181,6 +201,135 @@ window.r20CustomEditorResetFonts = function() {
             selectedHrEl.style.outline = '';
             selectedHrEl = null;
         }
+    }, true);
+
+    /* ==========================================================================
+       [ 웹폰트 로드 ]
+       ========================================================================== */
+    const loadWebFonts = () => {
+        CUSTOM_FONTS.forEach(font => {
+            if (font.url && !document.querySelector(`link[href="${font.url}"], style[data-font="${font.name}"]`)) {
+                if (font.url.endsWith('.woff') || font.url.endsWith('.woff2') || font.url.endsWith('.ttf')) {
+                    const style = document.createElement('style');
+                    style.dataset.font = font.name;
+                    style.innerHTML = `@font-face { font-family: '${font.family}'; src: url('${font.url}') format('woff'); font-weight: normal; font-style: normal; }`;
+                    document.head.appendChild(style);
+                } else {
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = font.url;
+                    document.head.appendChild(link);
+                }
+            }
+        });
+
+        syncFontClassCSS();
+    };
+
+    /* ==========================================================================
+       [ 폰트 지정용 CSS 클래스 동기화 - Roll20이 핸드아웃 저장 시 style 속성의
+         font-family(및 <font> 태그)를 서버 단에서 걸러내는 것으로 확인됨(!important를
+         줘도, <font face>로 우회해도 저장 후 사라짐). class 속성은 순수한 이름표라
+         이 필터에 안 걸리므로, 실제 폰트 지정은 여기서 전역 <style>로 주입하는
+         class 규칙이 담당하고, 저장되는 내용에는 class 이름만 남긴다 ]
+       ========================================================================== */
+    const FONT_CLASS_PREFIX = 'r20-cf-';
+
+    const fontFamilyToClassSlug = (family) =>
+        FONT_CLASS_PREFIX + String(family).replace(/[^a-zA-Z0-9가-힣]/g, '').slice(0, 40);
+
+    const syncFontClassCSS = () => {
+        let styleEl = document.getElementById('r20-custom-font-classes');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'r20-custom-font-classes';
+            document.head.appendChild(styleEl);
+        }
+
+        const rules = CUSTOM_FONTS
+            .filter(font => font.family && font.family !== 'inherit')
+            .map(font => `.${fontFamilyToClassSlug(font.family)} { font-family: ${font.family} !important; }`)
+            .join('\n');
+
+        if (styleEl.textContent !== rules) {
+            styleEl.textContent = rules;
+        }
+    };
+
+    /* ==========================================================================
+       [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family를 걸러내는 문제를
+         우회하기 위해, 폰트가 적용된 핸드아웃 내용을 채팅을 통해 별도의 Roll20 API
+         스크립트("R20FontSync")로 전달한다. API 스크립트는 handout.set()으로
+         직접 저장하므로 브라우저 저장 시의 필터링을 거치지 않는다.
+         (동봉된 "R20FontSync.js"를 캠페인 설정 > API Scripts에 설치해야 동작함)
+         채팅 메시지 길이 제한을 피하기 위해 base64로 인코딩한 뒤 여러 조각으로
+         나눠서 순서대로 전송한다. 사람이 직접 입력할 필요 없이, 폰트가 적용된
+         핸드아웃 편집창에서 포커스가 벗어날 때(blur) 자동으로 실행된다. ]
+       ========================================================================== */
+    const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
+    const R20_FONT_SYNC_CHUNK_SIZE = 1200;
+    const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
+
+    const sendR20ChatMessage = (text) => new Promise((resolve) => {
+        const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
+        if (!textarea) { resolve(false); return; }
+
+        textarea.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+
+        setTimeout(() => {
+            ['keydown', 'keypress', 'keyup'].forEach(type => {
+                textarea.dispatchEvent(new KeyboardEvent(type, {
+                    key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+                }));
+            });
+            resolve(true);
+        }, 50);
+    });
+
+    const base64EncodeUtf8 = (str) => btoa(unescape(encodeURIComponent(str)));
+
+    const r20FontSyncInFlight = new Set();
+
+    const syncFontStyledContentToServer = async (handoutId, field, html) => {
+        const syncKey = handoutId + ':' + field;
+        if (r20FontSyncInFlight.has(syncKey)) return;
+        r20FontSyncInFlight.add(syncKey);
+
+        try {
+            const b64 = base64EncodeUtf8(html);
+            const totalChunks = Math.max(1, Math.ceil(b64.length / R20_FONT_SYNC_CHUNK_SIZE));
+
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
+                const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunk}`;
+                const sent = await sendR20ChatMessage(command);
+                if (!sent) break;
+                await new Promise(r => setTimeout(r, R20_FONT_SYNC_CHUNK_DELAY_MS));
+            }
+        } finally {
+            r20FontSyncInFlight.delete(syncKey);
+        }
+    };
+
+    document.addEventListener('blur', (e) => {
+        const editor = e.target.closest && e.target.closest('.note-editable');
+        if (!editor) return;
+
+        const hasFontStyling = editor.querySelector(`font[face], [class*="${FONT_CLASS_PREFIX}"]`);
+        if (!hasFontStyling) return;
+
+        const dialog = editor.closest('[data-handoutid]');
+        const handoutId = dialog && dialog.getAttribute('data-handoutid');
+        if (!handoutId) return;
+
+        const field = editor.closest('.gmnotes') ? 'gmnotes' : 'notes';
+        const html = editor.innerHTML;
+
+        setTimeout(() => {
+            syncFontStyledContentToServer(handoutId, field, html);
+        }, 1500);
     }, true);
 
     /* ==========================================================================
@@ -298,9 +447,25 @@ window.r20CustomEditorResetFonts = function() {
         const range = selection.getRangeAt(0);
         const cssProp = toCssPropertyName(styleProperty);
 
+        // 폰트(font-family)는 Roll20 서버가 핸드아웃 저장 시 style 속성이든
+        // <font face="..."> 속성이든 전부 걸러내는 것으로 확인됨(!important,
+        // legacy font 태그 둘 다 저장 후 다시 불러오면 사라짐). 반면 class 속성은
+        // 그 자체로는 아무 스타일 정보가 없는 순수한 이름표라 이 필터를 통과한다.
+        // 그래서 폰트는 저장되는 내용엔 class 이름표만 남기고, 실제 font-family는
+        // 우리 스크립트가 전역으로 주입해두는 class 규칙(syncFontClassCSS)이
+        // 화면에 그려질 때마다 입혀준다. style/face는 즉시 반영용으로 같이 남겨두되
+        // (저장 전 미리보기, 혹시 모를 다른 경로 대비) 실제로 저장 후에도 살아남는
+        // 건 class 쪽이다.
+        const useFontTag = styleProperty === 'fontFamily';
+        const fontClass = useFontTag ? fontFamilyToClassSlug(value) : null;
+
         if (!selection.isCollapsed) {
-            const span = document.createElement('span');
+            const span = document.createElement(useFontTag ? 'font' : 'span');
             span.style.setProperty(cssProp, value, 'important');
+            if (useFontTag) {
+                span.setAttribute('face', value);
+                span.classList.add(fontClass);
+            }
             span.appendChild(range.extractContents());
 
             // 선택 영역 안쪽 요소에 이미 같은 속성의 인라인 스타일이 있으면
@@ -316,14 +481,24 @@ window.r20CustomEditorResetFonts = function() {
             });
             if (styleProperty === 'fontFamily') {
                 span.querySelectorAll('font[face]').forEach(el => el.removeAttribute('face'));
+                span.querySelectorAll(`[class*="${FONT_CLASS_PREFIX}"]`).forEach(el => {
+                    Array.from(el.classList).forEach(c => {
+                        if (c.startsWith(FONT_CLASS_PREFIX)) el.classList.remove(c);
+                    });
+                    if (!el.classList.length) el.removeAttribute('class');
+                });
             } else if (styleProperty === 'color') {
                 span.querySelectorAll('font[color]').forEach(el => el.removeAttribute('color'));
             }
 
             range.insertNode(span);
         } else {
-            const span = document.createElement('span');
+            const span = document.createElement(useFontTag ? 'font' : 'span');
             span.style.setProperty(cssProp, value, 'important');
+            if (useFontTag) {
+                span.setAttribute('face', value);
+                span.classList.add(fontClass);
+            }
             span.innerHTML = '&#8203;';
             range.insertNode(span);
 
@@ -1580,20 +1755,18 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     /* ==========================================================================
-       [ 툴바에 글자 크기 선택 드롭다운 삽입 ]
-       - 폰트(글꼴) 지정 기능은 Roll20이 핸드아웃 저장 시 서버에서 걸러내
-         저장 후 사라지는 문제가 있어(!important, legacy font 태그, class
-         이름표까지 전부 확인해봤지만 우회 불가) 이 버전에는 포함하지 않았습니다.
-         폰트가 저장 후에도 유지되는 프로 버전이 별도로 있습니다.
+       [ 툴바에 폰트 선택 드롭다운 삽입 ]
        ========================================================================== */
     const refreshFontUI = () => {
         document.querySelectorAll('.custom-font-dropdown-wrapper').forEach(w => w.remove());
         injectFontDropdown();
+        loadWebFonts();
     };
 
     const openFontSettingsPopover = (anchorBtn) => {
         document.getElementById('r20-font-settings-popover')?.remove();
 
+        let workingFonts = JSON.parse(JSON.stringify(CUSTOM_FONTS));
         let workingSizes = JSON.parse(JSON.stringify(CUSTOM_FONT_SIZES));
 
         const rect = anchorBtn.getBoundingClientRect();
@@ -1603,13 +1776,24 @@ window.r20CustomEditorResetFonts = function() {
             position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px;
             background: #fff; border: 1px solid #ccc; border-radius: 6px;
             box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 999999;
-            padding: 10px; width: 260px; font-family: sans-serif; font-size: 12px;
+            padding: 10px; width: 300px; font-family: sans-serif; font-size: 12px;
             color: #333; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
             max-height: 80vh; overflow-y: auto;
         `;
 
         pop.innerHTML = `
-            <label style="display:block; margin:0; color:#555; font-weight:bold;">글자 크기 목록 (쉼표로 구분)</label>
+            <label style="display:block; margin:0; color:#555; font-weight:bold;">🔤 폰트 목록 설정</label>
+            <div class="r20-font-list" style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; border:1px solid #eee; border-radius:4px; padding:4px;"></div>
+            <div style="display:flex; gap:4px;">
+                <input type="text" class="r20-font-name-input" placeholder="이름 (예: 내 폰트)" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
+                <input type="text" class="r20-font-family-input" placeholder="font-family 값" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
+            </div>
+            <input type="text" class="r20-font-url-input" placeholder="웹폰트 CSS/파일 URL (선택, 없으면 비워두기)" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
+            <button type="button" class="r20-font-add-btn btn btn-default btn-sm" style="width:100%; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">+ 폰트 추가</button>
+
+            <hr style="width:100%; margin:4px 0; border-top:1px solid #eee;">
+
+            <label style="display:block; margin:0; color:#555; font-weight:bold;">폰트 크기 목록 (쉼표로 구분)</label>
             <input type="text" class="r20-fontsize-list-input" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;" value="${workingSizes.join(', ')}">
 
             <div style="display:flex; gap:4px; margin-top:4px;">
@@ -1621,6 +1805,31 @@ window.r20CustomEditorResetFonts = function() {
         document.body.appendChild(pop);
         pop.addEventListener('mousedown', (e) => e.stopPropagation());
 
+        const listEl = pop.querySelector('.r20-font-list');
+        const renderFontList = () => {
+            listEl.innerHTML = workingFonts.map((font, idx) => `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                    <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${font.family}">${font.name}</span>
+                    <button type="button" class="r20-font-remove-btn" data-idx="${idx}" title="삭제" style="flex-shrink:0; width:18px; height:18px; line-height:16px; padding:0; border:1px solid #ccc; background:#fff; color:#a00; cursor:pointer; border-radius:3px;">×</button>
+                </div>
+            `).join('');
+
+            listEl.querySelectorAll('.r20-font-remove-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const idx = parseInt(btn.dataset.idx, 10);
+                    if (workingFonts.length <= 1) {
+                        console.warn('[R20-Custom-Editor] 폰트가 최소 1개는 있어야 합니다.');
+                        return;
+                    }
+                    workingFonts.splice(idx, 1);
+                    renderFontList();
+                });
+            });
+        };
+        renderFontList();
+
         const closeOnOutsideClick = (ev) => {
             if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
                 pop.remove();
@@ -1629,6 +1838,31 @@ window.r20CustomEditorResetFonts = function() {
         };
         pop._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
+
+        pop.querySelector('.r20-font-add-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const nameInput = pop.querySelector('.r20-font-name-input');
+            const familyInput = pop.querySelector('.r20-font-family-input');
+            const urlInput = pop.querySelector('.r20-font-url-input');
+
+            const name = nameInput.value.trim();
+            const family = familyInput.value.trim();
+            const url = urlInput.value.trim();
+
+            if (!name || !family) {
+                console.warn('[R20-Custom-Editor] 이름과 font-family 값을 모두 입력해주세요.');
+                return;
+            }
+
+            workingFonts.push({ name, url, family });
+            renderFontList();
+
+            nameInput.value = '';
+            familyInput.value = '';
+            urlInput.value = '';
+        });
 
         pop.querySelector('.r20-font-save-btn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -1640,12 +1874,14 @@ window.r20CustomEditorResetFonts = function() {
                 .filter(n => !isNaN(n) && n > 0);
             const uniqueSizes = [...new Set(parsedSizes)].sort((a, b) => a - b);
 
-            if (uniqueSizes.length === 0) {
-                console.warn('[R20-Custom-Editor] 크기가 1개 이상 있어야 저장할 수 있습니다.');
+            if (workingFonts.length === 0 || uniqueSizes.length === 0) {
+                console.warn('[R20-Custom-Editor] 폰트와 크기가 각각 1개 이상 있어야 저장할 수 있습니다.');
                 return;
             }
 
+            CUSTOM_FONTS = workingFonts;
             CUSTOM_FONT_SIZES = uniqueSizes;
+            localStorage.setItem(R20_FONTS_STORAGE_KEY, JSON.stringify(CUSTOM_FONTS));
             localStorage.setItem(R20_FONT_SIZES_STORAGE_KEY, JSON.stringify(CUSTOM_FONT_SIZES));
 
             refreshFontUI();
@@ -1658,7 +1894,9 @@ window.r20CustomEditorResetFonts = function() {
             e.preventDefault();
             e.stopPropagation();
 
+            workingFonts = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONTS));
             workingSizes = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONT_SIZES));
+            renderFontList();
             pop.querySelector('.r20-fontsize-list-input').value = workingSizes.join(', ');
         });
     };
@@ -1675,7 +1913,31 @@ window.r20CustomEditorResetFonts = function() {
             const wrapper = document.createElement('div');
             wrapper.className = 'note-btn-group btn-group custom-font-dropdown-wrapper';
 
+            let optionsHTML = CUSTOM_FONTS.map(font =>
+                `<option value="${font.family}" style="font-family: ${font.family};">${font.name}</option>`
+            ).join('');
+
             wrapper.innerHTML = `
+                <select class="custom-font-select btn btn-default btn-sm" style="
+                    height: 30px !important;
+                    line-height: 20px !important;
+                    max-width: 100px;
+                    font-size: 12px;
+                    padding: 3px 6px;
+                    margin: 0;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    background: #ffffff;
+                    color: #333333;
+                    cursor: pointer;
+                    text-overflow: ellipsis;
+                    outline: none;
+                    box-shadow: none;
+                    vertical-align: middle;
+                ">
+                    <option value="" disabled selected>폰트 선택</option>
+                    ${optionsHTML}
+                </select>
                 <select class="custom-fontsize-select btn btn-default btn-sm" style="
                     height: 30px !important;
                     line-height: 20px !important;
@@ -1695,8 +1957,15 @@ window.r20CustomEditorResetFonts = function() {
                     <option value="" disabled selected>크기</option>
                     ${CUSTOM_FONT_SIZES.map(size => `<option value="${size}px">${size}px</option>`).join('')}
                 </select>
-                <button type="button" class="note-btn btn btn-default btn-sm custom-font-settings-btn" title="글자 크기 목록 설정" aria-label="글자 크기 목록 설정">⚙</button>
+                <button type="button" class="note-btn btn btn-default btn-sm custom-font-settings-btn" title="폰트 목록 설정" aria-label="폰트 목록 설정">⚙</button>
             `;
+
+            const selectEl = wrapper.querySelector('.custom-font-select');
+            selectEl.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    applyTextStyle('fontFamily', e.target.value);
+                }
+            });
 
             const sizeSelectEl = wrapper.querySelector('.custom-fontsize-select');
             sizeSelectEl.addEventListener('change', (e) => {
@@ -2328,6 +2597,7 @@ window.r20CustomEditorResetFonts = function() {
     }, true);
 
     const runEnhancer = () => {
+        loadWebFonts();
         forceInjectLabelDOM();
         injectFontDropdown();
         injectImageUploadButton();
