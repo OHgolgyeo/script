@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Roll20 Custom Handout Editer
+// @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.0
 // @author       오골계 (https://x.com/5golgyeo)
-// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정)
+// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Handout%20Editer.js
@@ -23,6 +23,8 @@ const CUSTOM_FONTS = [
 
 (function() {
     'use strict';
+
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.32');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -48,6 +50,15 @@ const CUSTOM_FONTS = [
             .note-editable td, .note-editable th {
                 position: relative;
                 word-break: break-all;
+            }
+            .note-editable p {
+                display: block !important;
+            }
+
+            .namecontainer.r20-journal-selected-name,
+            .nj-name.r20-journal-selected-name {
+                color: #e53935 !important;
+                font-weight: 600 !important;
             }
 
             .r20-real-preview-label {
@@ -83,6 +94,25 @@ const CUSTOM_FONTS = [
             selection.removeAllRanges();
             selection.addRange(savedRange);
         }
+    };
+
+    /* ==========================================================================
+       [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
+       - 팝업을 새로 열 때마다 기존 걸 remove() 하고 다시 만드는 방식만 쓰면,
+         버튼을 다시 눌러도 "닫혔다가 즉시 재생성"되는 것처럼 보여서 실제로는
+         닫히지 않는 것처럼 느껴진다. 이미 열려 있으면 다시 열지 않고 그냥
+         닫기만 하도록 감싸주는 공통 함수.
+       ========================================================================== */
+    const toggleCustomPopover = (popoverId, openFn) => {
+        const existing = document.getElementById(popoverId);
+        if (existing) {
+            if (typeof existing._r20CloseOnOutsideClick === 'function') {
+                document.removeEventListener('click', existing._r20CloseOnOutsideClick, true);
+            }
+            existing.remove();
+            return;
+        }
+        openFn();
     };
 
     /* ==========================================================================
@@ -542,6 +572,7 @@ const CUSTOM_FONTS = [
                 document.removeEventListener('click', closeOnOutsideClick, true);
             }
         };
+        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 
         pop.querySelector('.r20-hr-insert-btn').addEventListener('click', (e) => {
@@ -593,7 +624,7 @@ const CUSTOM_FONTS = [
                     return;
                 }
 
-                openHrInsertPopover(editor, freshBtn);
+                toggleCustomPopover('r20-hr-insert-popover', () => openHrInsertPopover(editor, freshBtn));
             });
         });
     };
@@ -783,6 +814,7 @@ const CUSTOM_FONTS = [
                 document.removeEventListener('click', closeOnOutsideClick, true);
             }
         };
+        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 
         const nameInput = pop.querySelector('.r20-tm-save-name');
@@ -926,7 +958,10 @@ const CUSTOM_FONTS = [
         modal.addEventListener('mousedown', (e) => e.stopPropagation());
         positionFixedDropdown(modal, anchorBtn);
 
-        modal.querySelector('#r20-tm-close').addEventListener('click', () => modal.remove());
+        modal.querySelector('#r20-tm-close').addEventListener('click', () => {
+            document.removeEventListener('click', closeOnOutsideClick, true);
+            modal.remove();
+        });
 
         const closeOnOutsideClick = (ev) => {
             if (!modal.contains(ev.target) && ev.target !== anchorBtn) {
@@ -934,6 +969,7 @@ const CUSTOM_FONTS = [
                 document.removeEventListener('click', closeOnOutsideClick, true);
             }
         };
+        modal._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 
         renderList();
@@ -971,7 +1007,7 @@ const CUSTOM_FONTS = [
                     return;
                 }
 
-                openTemplateSavePopover(editor, saveBtn);
+                toggleCustomPopover('r20-tm-save-popover', () => openTemplateSavePopover(editor, saveBtn));
             });
 
             const loadBtn = document.createElement('button');
@@ -991,7 +1027,7 @@ const CUSTOM_FONTS = [
                     return;
                 }
 
-                openTemplateManagerModal(editor, loadBtn);
+                toggleCustomPopover('r20-template-manager-modal', () => openTemplateManagerModal(editor, loadBtn));
             });
 
             btnWrapper.appendChild(saveBtn);
@@ -1010,17 +1046,14 @@ const CUSTOM_FONTS = [
         const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
 
         toolbars.forEach(toolbar => {
-            if (toolbar.querySelector('.custom-table-mergesplit-btn-group')) return;
+            if (toolbar.querySelector('.custom-table-mergesplit-btn')) return;
 
             const rowDeleteBtn = toolbar.querySelector('button:has(.note-icon-row-remove), button[title*="Delete row"], button[data-original-title*="Delete row"], button[aria-label*="Delete row"]');
             if (!rowDeleteBtn) return;
 
-            const btnWrapper = document.createElement('div');
-            btnWrapper.className = 'note-btn-group btn-group custom-table-mergesplit-btn-group';
-
             const mergeBtn = document.createElement('button');
             mergeBtn.type = 'button';
-            mergeBtn.className = 'note-btn btn btn-default btn-sm';
+            mergeBtn.className = 'note-btn btn btn-default btn-sm custom-table-mergesplit-btn';
             mergeBtn.title = '칸 합치기 (드래그로 여러 칸 선택 후 클릭)';
             mergeBtn.setAttribute('aria-label', '칸 합치기');
             mergeBtn.innerHTML = `⛓️`;
@@ -1033,7 +1066,7 @@ const CUSTOM_FONTS = [
 
             const splitBtn = document.createElement('button');
             splitBtn.type = 'button';
-            splitBtn.className = 'note-btn btn btn-default btn-sm';
+            splitBtn.className = 'note-btn btn btn-default btn-sm custom-table-mergesplit-btn';
             splitBtn.title = '칸 나누기 (합쳐진 칸 안에 커서를 놓고 클릭)';
             splitBtn.setAttribute('aria-label', '칸 나누기');
             splitBtn.innerHTML = `✂️`;
@@ -1044,11 +1077,12 @@ const CUSTOM_FONTS = [
                 splitSelectedTableCell();
             });
 
-            btnWrapper.appendChild(mergeBtn);
-            btnWrapper.appendChild(splitBtn);
-
-            const deleteGroup = rowDeleteBtn.closest('.btn-group') || rowDeleteBtn;
-            deleteGroup.parentNode.insertBefore(btnWrapper, deleteGroup);
+            // 별도의 btn-group을 새로 안 만들고, 행/열/표 삭제 버튼들이 속한
+            // 그룹 안에 바로 끼워 넣는다. 그러면 "열 추가 | 칸 합치기, 나누기,
+            // 행 삭제, 열 삭제, 표 삭제"처럼 구분선 없이 한 그룹으로 보인다.
+            const deleteGroup = rowDeleteBtn.closest('.btn-group') || rowDeleteBtn.parentNode;
+            deleteGroup.insertBefore(mergeBtn, rowDeleteBtn);
+            deleteGroup.insertBefore(splitBtn, rowDeleteBtn);
         });
     };
 
@@ -1225,6 +1259,11 @@ const CUSTOM_FONTS = [
     const openImageInsertPopover = (editor, anchorBtn) => {
         document.getElementById('r20-img-insert-popover')?.remove();
 
+        // 팝업이 열리는 사이 (특히 "파일 첨부"로 OS 파일 선택창이 뜨는 동안)
+        // 커서 위치가 유실될 수 있어, HR 팝업과 동일하게 여는 시점에 명시적으로
+        // 한번 더 저장해둔다 - 파일 선택 후 이미지가 엉뚱한 곳에 삽입되는 문제 예방.
+        saveSelection();
+
         const rect = anchorBtn.getBoundingClientRect();
         const pop = document.createElement('div');
         pop.id = 'r20-img-insert-popover';
@@ -1233,16 +1272,16 @@ const CUSTOM_FONTS = [
             background: #fff; border: 1px solid #ccc; border-radius: 6px;
             box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 999999;
             padding: 10px; width: 230px; font-family: sans-serif; font-size: 12px;
-            color: #333;
+            color: #333; box-sizing: border-box;
         `;
 
         pop.innerHTML = `
             <label style="display:block; margin-bottom:4px; color:#555; font-weight:bold;">🔗 이미지 URL로 추가</label>
             <div style="display:flex; gap:4px; margin-bottom:10px;">
-                <input type="text" class="r20-img-url-input" placeholder="https://..." style="flex:1; min-width:0; padding:3px 5px; border:1px solid #ccc; border-radius:3px; color:#000; background:#fff;">
-                <button type="button" class="r20-img-url-add btn btn-primary btn-sm" style="cursor:pointer;">추가</button>
+                <input type="text" class="r20-img-url-input" placeholder="https://..." style="flex:1; min-width:0; padding:3px 5px; border:1px solid #ccc; border-radius:3px; color:#000; background:#fff; box-sizing:border-box;">
+                <button type="button" class="r20-img-url-add btn btn-primary btn-sm" style="cursor:pointer; box-sizing:border-box; float:none; margin:0;">추가</button>
             </div>
-            <button type="button" class="r20-img-file-attach btn btn-default btn-sm" style="width:100%; padding:8px; cursor:pointer;">
+            <button type="button" class="r20-img-file-attach btn btn-default btn-sm" style="display:block; width:100%; padding:8px; cursor:pointer; box-sizing:border-box; float:none; margin:0;">
                 📁 파일 첨부
             </button>
         `;
@@ -1256,6 +1295,7 @@ const CUSTOM_FONTS = [
                 document.removeEventListener('click', closeOnOutsideClick, true);
             }
         };
+        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 
         pop.querySelector('.r20-img-file-attach').addEventListener('click', (e) => {
@@ -1296,12 +1336,14 @@ const CUSTOM_FONTS = [
             );
             if (!linkBtn) return;
 
-            const wrapper = document.createElement('div');
-            wrapper.className = 'note-btn-group btn-group custom-img-upload-btn';
-
+            // 예전에는 이 버튼을 별도의 .note-btn-group으로 감싸서 note-insert
+            // 그룹 안에 "중첩 그룹"으로 끼워 넣었는데, 그 감싸는 div 자체가
+            // 여백(margin)을 추가로 잡아먹어서 이미지/링크/링크제거 묶음이
+            // 툴바 첫 줄에 들어갈 폭을 살짝 초과해 둘째 줄로 밀려났다. link/unlink
+            // 버튼처럼 별도 wrapper 없이 순수 버튼으로 끼워 넣어 그 여백을 없앤다.
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'note-btn btn btn-default btn-sm';
+            btn.className = 'note-btn btn btn-default btn-sm custom-img-upload-btn';
             btn.title = '이미지 첨부';
             btn.setAttribute('aria-label', '이미지 첨부');
             btn.innerHTML = `<i class="note-icon-picture"></i>`;
@@ -1316,13 +1358,11 @@ const CUSTOM_FONTS = [
                     return;
                 }
 
-                openImageInsertPopover(editor, btn);
+                toggleCustomPopover('r20-img-insert-popover', () => openImageInsertPopover(editor, btn));
             });
 
-            wrapper.appendChild(btn);
-
             const insertGroup = linkBtn.closest('.note-insert') || linkBtn.parentNode;
-            insertGroup.insertBefore(wrapper, linkBtn);
+            insertGroup.insertBefore(btn, linkBtn);
         });
     };
 
@@ -1639,6 +1679,281 @@ const CUSTOM_FONTS = [
     };
 
     /* ==========================================================================
+       [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ]
+       ========================================================================== */
+    const selectedHandoutIds = new Set();
+    // Roll20 저널 패널은 최소 두 가지 DOM 구조를 쓴다: 신형(li.nj-item) / 구형(li.journalitem, dd-list 기반).
+    // 둘 다 지원하도록 선택자를 함께 둔다. 핸드아웃/캐릭터 둘 다 이 구조를 공유한다.
+    const JOURNAL_ITEM_SELECTOR = 'li.journalitem[data-itemid], li.nj-item[data-itemid]';
+    const JOURNAL_NAME_SELECTOR = '.namecontainer, .nj-name';
+
+    // 우리 커스텀 메뉴 항목의 mousedown을 stopPropagation 하면, Roll20 자신이
+    // (아마 document의 mousedown/click에 바인딩해뒀을) 메뉴 닫기 로직까지 같이
+    // 막혀버려서 메뉴가 화면에 계속 남는 경우가 있다. 그래서 우리가 직접 메뉴를
+    // 닫아준다 (인라인 style.display='none' - jQuery의 .show()가 다음에 다시 열 때
+    // 이 값을 덮어쓰므로 다음 우클릭에는 정상적으로 다시 뜬다).
+    const hideD20ContextMenu = (fromEl) => {
+        const menu = fromEl.closest('.d20contextmenu');
+        if (menu) menu.style.display = 'none';
+    };
+
+    // 핸드아웃과 캐릭터 두 콜렉션을 모두 조회해서 해당 id의 모델을 찾는다.
+    const getHandoutModel = (id) => {
+        if (!id || !window.Campaign) return null;
+        const handouts = window.Campaign.handouts;
+        const characters = window.Campaign.characters;
+        const fromHandouts = handouts && handouts.get(id);
+        if (fromHandouts) return fromHandouts;
+        const fromCharacters = characters && characters.get(id);
+        if (fromCharacters) return fromCharacters;
+        return null;
+    };
+
+    const syncJournalSelectionStyles = () => {
+        document.querySelectorAll(JOURNAL_ITEM_SELECTOR).forEach(item => {
+            const nameEl = item.querySelector(JOURNAL_NAME_SELECTOR);
+            if (!nameEl) return;
+            if (selectedHandoutIds.has(item.dataset.itemid)) {
+                nameEl.classList.add('r20-journal-selected-name');
+            } else {
+                nameEl.classList.remove('r20-journal-selected-name');
+            }
+        });
+    };
+
+    // Ctrl+Shift+클릭 범위 선택의 기준점(마지막으로 단독 Ctrl+클릭한 항목).
+    let lastHandoutAnchorId = null;
+
+    const clearHandoutSelection = () => {
+        lastHandoutAnchorId = null;
+        if (selectedHandoutIds.size === 0) return;
+        selectedHandoutIds.clear();
+        syncJournalSelectionStyles();
+    };
+
+    // 목록에 실제로 표시된 순서(DOM 순서)를 기준으로 범위를 계산한다.
+    const getOrderedJournalIds = () => Array.from(document.querySelectorAll(JOURNAL_ITEM_SELECTOR))
+        .map(el => el.dataset.itemid)
+        .filter(Boolean);
+
+    const selectHandoutRange = (anchorId, targetId) => {
+        const ids = getOrderedJournalIds();
+        const anchorIdx = ids.indexOf(anchorId);
+        const targetIdx = ids.indexOf(targetId);
+        if (anchorIdx === -1 || targetIdx === -1) return;
+
+        const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        for (let i = start; i <= end; i++) {
+            if (getHandoutModel(ids[i])) selectedHandoutIds.add(ids[i]);
+        }
+        syncJournalSelectionStyles();
+    };
+
+    const toggleHandoutSelection = (item) => {
+        const id = item.dataset.itemid;
+        if (!id || !getHandoutModel(id)) return;
+
+        if (selectedHandoutIds.has(id)) {
+            selectedHandoutIds.delete(id);
+        } else {
+            selectedHandoutIds.add(id);
+        }
+        syncJournalSelectionStyles();
+    };
+
+    const deleteSelectedHandouts = () => {
+        if (selectedHandoutIds.size === 0) return;
+
+        const targets = Array.from(selectedHandoutIds);
+
+        const names = targets.map(id => {
+            const model = getHandoutModel(id);
+            return model ? (model.get('name') || '(제목 없음)') : id;
+        });
+
+        const confirmed = window.confirm(`선택한 항목 ${targets.length}개를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.\n\n${names.join('\n')}`);
+        if (!confirmed) return;
+
+        targets.forEach(id => {
+            const model = getHandoutModel(id);
+            if (model) model.destroy();
+        });
+
+        clearHandoutSelection();
+    };
+
+    // Roll20 우클릭 메뉴도 저널 패널과 마찬가지로 두 가지 구현이 있다:
+    // 구형(#journalitemmenu, div.d20contextmenu > ul > li 구조 - 자체 "삭제" 항목 있음) /
+    // 신형(#journal-context-menu, div > div.context-menu-item 구조).
+    // 우리가 추가하는 항목은 Roll20 자체 "삭제"(단일 삭제)와 헷갈리지 않도록 문구를 다르게 둔다.
+    const injectJournalDeleteMenuItem = () => {
+        const legacyMenu = document.getElementById('journalitemmenu');
+        const newMenu = document.getElementById('journal-context-menu');
+        const menu = legacyMenu || newMenu;
+        if (!menu) return;
+
+        const container = legacyMenu ? menu.querySelector('ul') : menu;
+        if (!container) return;
+
+        let deleteItem = container.querySelector('.r20-custom-delete-item');
+
+        if (selectedHandoutIds.size === 0) {
+            if (deleteItem) deleteItem.remove();
+            return;
+        }
+
+        if (!deleteItem) {
+            deleteItem = document.createElement(legacyMenu ? 'li' : 'div');
+            deleteItem.className = legacyMenu ? 'r20-custom-delete-item' : 'context-menu-item r20-custom-delete-item';
+            // 클릭 리스너는 여기 안 붙인다 - Roll20이 메뉴 클릭 시(특히 구형 메뉴는
+            // mousedown 시점에) 메뉴 자체를 즉시 지워버려서 뒤이은 click 이벤트가
+            // 아예 발생하지 않는 경우가 있다. 그래서 아래 document 레벨 mousedown
+            // 캡처 단계에서 이 항목을 직접 감지해 처리한다.
+            container.appendChild(deleteItem);
+        }
+
+        deleteItem.textContent = `선택한 ${selectedHandoutIds.size}개 일괄 삭제`;
+    };
+
+    /* ==========================================================================
+       [ 라이브러리 이미지 다중 선택 & 삭제 ]
+       - 저널/캐릭터 다중 선택 삭제와 동일한 패턴(Ctrl+클릭 선택, 우클릭 메뉴에
+         일괄 삭제 항목 추가)을 라이브러리(#imagedialog) 이미지 목록에도 적용한다.
+       - 라이브러리 이미지는 Campaign의 Backbone 콜렉션으로 관리되지 않는 계정
+         단위 자산이라 .destroy() 같은 API가 없다. 대신 Roll20이 실제 "삭제"
+         클릭 시 서버로 보내는 요청을 그대로 재현한다.
+         (POST /image_library/permdelete, payload: {ids: {imageids: [...]}} - 개발자
+         도구 Network 탭에서 실측 확인함)
+       ========================================================================== */
+    const selectedImageIds = new Set();
+    const LIBRARY_ITEM_SELECTOR = 'li[data-imageid]';
+    const LIBRARY_NAME_SELECTOR = '.namecontainer';
+
+    const syncLibrarySelectionStyles = () => {
+        document.querySelectorAll(LIBRARY_ITEM_SELECTOR).forEach(item => {
+            const nameEl = item.querySelector(LIBRARY_NAME_SELECTOR);
+            if (!nameEl) return;
+            // CSS 규칙이 .namecontainer 클래스를 공유하므로 저널용 클래스를 그대로 재사용한다.
+            if (selectedImageIds.has(item.dataset.imageid)) {
+                nameEl.classList.add('r20-journal-selected-name');
+            } else {
+                nameEl.classList.remove('r20-journal-selected-name');
+            }
+        });
+    };
+
+    // Ctrl+Shift+클릭 범위 선택의 기준점(마지막으로 단독 Ctrl+클릭한 항목).
+    let lastImageAnchorId = null;
+
+    const clearImageSelection = () => {
+        lastImageAnchorId = null;
+        if (selectedImageIds.size === 0) return;
+        selectedImageIds.clear();
+        syncLibrarySelectionStyles();
+    };
+
+    // 목록에 실제로 표시된 순서(DOM 순서)를 기준으로 범위를 계산한다.
+    const getOrderedImageIds = () => Array.from(document.querySelectorAll(LIBRARY_ITEM_SELECTOR))
+        .map(el => el.dataset.imageid)
+        .filter(Boolean);
+
+    const selectImageRange = (anchorId, targetId) => {
+        const ids = getOrderedImageIds();
+        const anchorIdx = ids.indexOf(anchorId);
+        const targetIdx = ids.indexOf(targetId);
+        if (anchorIdx === -1 || targetIdx === -1) return;
+
+        const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+        for (let i = start; i <= end; i++) {
+            selectedImageIds.add(ids[i]);
+        }
+        syncLibrarySelectionStyles();
+    };
+
+    const toggleImageSelection = (item) => {
+        const id = item.dataset.imageid;
+        if (!id) return;
+
+        if (selectedImageIds.has(id)) {
+            selectedImageIds.delete(id);
+        } else {
+            selectedImageIds.add(id);
+        }
+        syncLibrarySelectionStyles();
+    };
+
+    const deleteSelectedImages = () => {
+        if (selectedImageIds.size === 0) return;
+
+        const targets = Array.from(selectedImageIds);
+
+        const confirmed = window.confirm(`선택한 이미지 ${targets.length}개를 라이브러리에서 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없고, 이미지 자체가 영구 삭제됩니다.`);
+        if (!confirmed) return;
+
+        const finishUp = () => {
+            targets.forEach(id => {
+                document.querySelectorAll(`li[data-imageid="${id}"]`).forEach(el => el.remove());
+            });
+            clearImageSelection();
+        };
+
+        const failUp = (err) => {
+            console.error('[R20-Custom-Editor] 이미지 삭제 요청 실패', err);
+            alert('이미지 삭제 요청이 실패했습니다. 콘솔(F12)을 확인해주세요.');
+        };
+
+        // Roll20이 jQuery를 전역에 로드해두므로, 실제 삭제 버튼과 동일한 방식(쿠키
+        // 인증 포함한 같은 오리진 요청)으로 보내기 위해 가능하면 jQuery를 사용한다.
+        const $ = window.jQuery || window.$;
+        if ($ && typeof $.post === 'function') {
+            $.post('/image_library/permdelete', { ids: { imageids: targets } })
+                .done(finishUp)
+                .fail(failUp);
+        } else {
+            const params = new URLSearchParams();
+            targets.forEach(id => params.append('ids[imageids][]', id));
+            fetch('https://app.roll20.net/image_library/permdelete', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: params.toString(),
+            }).then(res => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                finishUp();
+            }).catch(failUp);
+        }
+    };
+
+    // 라이브러리 우클릭 메뉴(#librarycopymenu)는 저널 구형 메뉴(#journalitemmenu)와
+    // 동일하게 div.d20contextmenu > ul > li 구조이고, 자체 "삭제"(단일 삭제) 항목이
+    // 있으므로 헷갈리지 않도록 문구를 다르게 둔다.
+    const injectLibraryDeleteMenuItem = () => {
+        const menu = document.getElementById('librarycopymenu');
+        if (!menu) return;
+
+        const container = menu.querySelector('ul');
+        if (!container) return;
+
+        let deleteItem = container.querySelector('.r20-custom-image-delete-item');
+
+        if (selectedImageIds.size === 0) {
+            if (deleteItem) deleteItem.remove();
+            return;
+        }
+
+        if (!deleteItem) {
+            deleteItem = document.createElement('li');
+            deleteItem.className = 'r20-custom-image-delete-item';
+            // 저널과 마찬가지로 click 리스너는 붙이지 않는다 - 메뉴가 mousedown
+            // 시점에 닫혀버려서 click이 발생하지 않는다. document 레벨 mousedown
+            // 캡처 단계에서 이 항목을 직접 감지해 처리한다.
+            container.appendChild(deleteItem);
+        }
+
+        deleteItem.textContent = `선택한 ${selectedImageIds.size}개 이미지 일괄 삭제`;
+    };
+
+    /* ==========================================================================
        [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ]
        ========================================================================== */
     document.addEventListener('selectionchange', () => {
@@ -1651,6 +1966,163 @@ const CUSTOM_FONTS = [
     document.addEventListener('paste', handlePasteFormatting, true);
     document.addEventListener('dragover', handleEditorDragOver, true);
     document.addEventListener('drop', handleEditorImageDrop, true);
+
+    // 실제로 핸드아웃인지 여부와 무관하게, 저널 항목(li.journalitem 구형 / li.nj-item 신형)
+    // 위에서 벌어진 Ctrl/Cmd 클릭은 일단 전부 가로막는다 (열기 여부 판단을 handouts
+    // 콜렉션 조회 성공 여부에 의존시키지 않기 위함).
+    const handleJournalCtrlInteraction = (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return false;
+        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
+        if (!item) return false;
+
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return item;
+    };
+
+    // Roll20이 항목 열기를 mousedown/click 중 어느 단계에서 처리하든 걸러내기 위해
+    // 두 단계 모두에서, document 캡처 단계에서 가로챈다 (mousedown에서 실제 토글을 수행).
+    // mousedown 시점과 click 시점 사이에 Ctrl 키를 먼저 뗄 수도 있으므로(click의
+    // ctrlKey가 false로 찍힘), click 시점의 ctrlKey 값은 신뢰하지 않고 이 플래그로
+    // "방금 mousedown에서 이미 처리한 상호작용인지"를 직접 추적한다.
+    let journalCtrlMousedownHandled = false;
+
+    document.addEventListener('mousedown', (e) => {
+        const handoutDeleteItem = e.target.closest('.r20-custom-delete-item');
+        if (handoutDeleteItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            deleteSelectedHandouts();
+            hideD20ContextMenu(handoutDeleteItem);
+            return;
+        }
+
+        const item = handleJournalCtrlInteraction(e);
+        if (item) {
+            const id = item.dataset.itemid;
+            // Ctrl+Shift+클릭: 마지막 기준점부터 이 항목까지 범위 전체를 선택에
+            // 추가한다(탐색기 스타일). 기준점이 없으면 그냥 단독 토글로 처리.
+            if (e.shiftKey && lastHandoutAnchorId) {
+                selectHandoutRange(lastHandoutAnchorId, id);
+            } else {
+                toggleHandoutSelection(item);
+                lastHandoutAnchorId = id;
+            }
+            journalCtrlMousedownHandled = true;
+        }
+    }, true);
+
+    document.addEventListener('click', (e) => {
+        if (journalCtrlMousedownHandled) {
+            journalCtrlMousedownHandled = false;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return;
+        }
+
+        if (handleJournalCtrlInteraction(e)) return;
+
+        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
+        if (item && (e.ctrlKey || e.metaKey)) return;
+
+        if (selectedHandoutIds.size > 0 && !e.target.closest('.r20-custom-delete-item, #journal-context-menu')) {
+            clearHandoutSelection();
+        }
+    }, true);
+
+    document.addEventListener('contextmenu', (e) => {
+        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
+        const id = item ? item.dataset.itemid : null;
+
+        if (!item && selectedHandoutIds.size === 0) return;
+
+        if (id && getHandoutModel(id) && !selectedHandoutIds.has(id)) {
+            selectedHandoutIds.clear();
+            selectedHandoutIds.add(id);
+            syncJournalSelectionStyles();
+        }
+
+        setTimeout(injectJournalDeleteMenuItem, 0);
+    }, true);
+
+    // 라이브러리 이미지 목록(li[data-imageid])에 대한 Ctrl+클릭 다중 선택 /
+    // 우클릭 일괄 삭제. 저널 쪽과 동일한 이유(메뉴가 mousedown에 닫힘, click의
+    // ctrlKey가 늦게 풀릴 수 있음)로 동일한 mousedown 우선 패턴을 사용한다.
+    const handleLibraryCtrlInteraction = (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return false;
+        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
+        if (!item) return false;
+
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return item;
+    };
+
+    let libraryCtrlMousedownHandled = false;
+
+    document.addEventListener('mousedown', (e) => {
+        const imageDeleteItem = e.target.closest('.r20-custom-image-delete-item');
+        if (imageDeleteItem) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            deleteSelectedImages();
+            hideD20ContextMenu(imageDeleteItem);
+            return;
+        }
+
+        const item = handleLibraryCtrlInteraction(e);
+        if (item) {
+            const id = item.dataset.imageid;
+            // Ctrl+Shift+클릭: 마지막 기준점부터 이 항목까지 범위 전체를 선택에
+            // 추가한다(탐색기 스타일). 기준점이 없으면 그냥 단독 토글로 처리.
+            if (e.shiftKey && lastImageAnchorId) {
+                selectImageRange(lastImageAnchorId, id);
+            } else {
+                toggleImageSelection(item);
+                lastImageAnchorId = id;
+            }
+            libraryCtrlMousedownHandled = true;
+        }
+    }, true);
+
+    document.addEventListener('click', (e) => {
+        if (libraryCtrlMousedownHandled) {
+            libraryCtrlMousedownHandled = false;
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return;
+        }
+
+        if (handleLibraryCtrlInteraction(e)) return;
+
+        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
+        if (item && (e.ctrlKey || e.metaKey)) return;
+
+        if (selectedImageIds.size > 0 && !e.target.closest('.r20-custom-image-delete-item, #librarycopymenu')) {
+            clearImageSelection();
+        }
+    }, true);
+
+    document.addEventListener('contextmenu', (e) => {
+        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
+        const id = item ? item.dataset.imageid : null;
+
+        if (!item && selectedImageIds.size === 0) return;
+
+        if (id && !selectedImageIds.has(id)) {
+            selectedImageIds.clear();
+            selectedImageIds.add(id);
+            syncLibrarySelectionStyles();
+        }
+
+        setTimeout(injectLibraryDeleteMenuItem, 0);
+    }, true);
 
     const runEnhancer = () => {
         loadWebFonts();
@@ -1665,6 +2137,8 @@ const CUSTOM_FONTS = [
         fixColorDropdownClipping();
         enhanceTableMenu();
         makeTablesResizable();
+        syncJournalSelectionStyles();
+        syncLibrarySelectionStyles();
     };
 
     document.addEventListener('click', (e) => {
