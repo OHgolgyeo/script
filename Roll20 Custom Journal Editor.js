@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.11
+// @version      1.12
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -91,7 +91,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.11');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.12');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -861,6 +861,62 @@ window.r20CustomEditorResetFonts = function() {
                 });
             });
         });
+    };
+
+    /* ==========================================================================
+       [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 -
+         구글독스 등에서 붙여넣을 때 div/table 같은 블록 요소 전체가 <strong> 등
+         인라인 태그 안에 통째로 들어가는 경우가 있음. 이러면 브라우저가 그 인라인
+         태그를 폭 0으로 취급해서 안의 블록 요소가 표 크기만큼 쪼그라들어버리고,
+         margin:auto 가운데 정렬이 무력화됨. 해당 태그가 가졌던 서식(굵게/기울임/
+         밑줄/색상)은 블록 자식에게 옮겨준 뒤, 태그 자체는 풀어서 제거함 ]
+       ========================================================================== */
+    const fixInvalidInlineWrapping = () => {
+        const INLINE_SELECTOR = 'strong, b, em, i, u, font';
+        const BLOCK_TAGS = ['DIV', 'TABLE', 'P', 'UL', 'OL', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+        let changedAny = false;
+
+        document.querySelectorAll('.note-editable, .tox-edit-area, .handoutviewer').forEach(root => {
+            let found = true;
+            let guard = 0;
+
+            while (found && guard < 10) {
+                found = false;
+                guard++;
+
+                root.querySelectorAll(INLINE_SELECTOR).forEach(inlineEl => {
+                    const blockChild = Array.from(inlineEl.children).find(c => BLOCK_TAGS.includes(c.tagName));
+                    if (!blockChild) return;
+
+                    const tag = inlineEl.tagName.toLowerCase();
+                    if ((tag === 'strong' || tag === 'b') && !blockChild.style.fontWeight) {
+                        blockChild.style.fontWeight = 'bold';
+                    } else if ((tag === 'em' || tag === 'i') && !blockChild.style.fontStyle) {
+                        blockChild.style.fontStyle = 'italic';
+                    } else if (tag === 'u' && !blockChild.style.textDecoration) {
+                        blockChild.style.textDecoration = 'underline';
+                    } else if (tag === 'font') {
+                        if (inlineEl.color && !blockChild.style.color) blockChild.style.color = inlineEl.color;
+                        if (inlineEl.face && !blockChild.style.fontFamily) blockChild.style.fontFamily = inlineEl.face;
+                    }
+
+                    while (inlineEl.firstChild) {
+                        inlineEl.parentNode.insertBefore(inlineEl.firstChild, inlineEl);
+                    }
+                    inlineEl.parentNode.removeChild(inlineEl);
+
+                    found = true;
+                    changedAny = true;
+                });
+            }
+        });
+
+        // 구조가 바뀐 표들은 컨테이너 너비가 달라졌을 수 있으니 정렬 판정을 다시 하도록 플래그 초기화
+        if (changedAny) {
+            document.querySelectorAll('.note-editable table, .tox-edit-area table, .handoutviewer table').forEach(t => {
+                delete t.dataset.alignNormalized;
+            });
+        }
     };
 
     /* ==========================================================================
@@ -2418,6 +2474,7 @@ window.r20CustomEditorResetFonts = function() {
         fixColorDropdownClipping();
         enhanceTableMenu();
         makeTablesResizable();
+        fixInvalidInlineWrapping();
         normalizeTableAlignment();
         syncJournalSelectionStyles();
         syncLibrarySelectionStyles();
