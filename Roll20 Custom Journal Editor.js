@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.9
+// @version      1.10
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -91,7 +91,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.9');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.10');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -241,14 +241,36 @@ window.r20CustomEditorResetFonts = function() {
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlData, 'text/html');
 
-            // 구글 문서/워드 등에서 붙여넣으면 <style>로 클래스 서식(font-family 등)이
-            // 딸려오는 경우가 많다. 이 <style>이 그대로 삽입되면 에디터 안에 실제로
-            // 살아있는 스타일시트가 되어 버려서, 이후 폰트를 다시 지정해도 그 클래스
-            // 규칙(특히 !important가 붙은 경우)이 계속 이겨서 안 바뀌는 것처럼 보인다.
-            // 그래서 <style>/<link>는 통째로 제거하고, 그 스타일에 연결된 class 속성도
-            // 다 지워서 순수 인라인 스타일만 남긴다.
-            doc.querySelectorAll('style, link').forEach(el => el.remove());
-            doc.querySelectorAll('*').forEach(el => el.removeAttribute('class'));
+            // 구글 문서/워드 등에서 붙여넣으면 정렬·폰트 같은 서식이 인라인 style이
+            // 아니라 <style> 안의 클래스 규칙(.c1{text-align:center} 등)으로 딸려오는
+            // 경우가 많다. 이 <style>을 그대로 두면 에디터 안에 살아있는 스타일시트가
+            // 되어 버려서 이후 폰트를 다시 지정해도 그 클래스(특히 !important가 붙은
+            // 경우)가 계속 이기고, 그렇다고 무작정 <style>/class를 지워버리면 정렬 같은
+            // 서식 정보 자체가 통째로 사라진다. 그래서 실제 브라우저 렌더링 엔진으로
+            // 클래스 규칙이 각 요소에 어떤 값으로 적용되는지 계산해서 인라인 style로
+            // "구워넣은" 다음에 <style>/class를 지운다 — 서식은 유지하고 클래스만 없앤다.
+            if (doc.querySelector('style, link[rel="stylesheet"]')) {
+                const stage = document.createElement('div');
+                stage.style.cssText = 'position:fixed; left:-99999px; top:0; width:800px; visibility:hidden; pointer-events:none;';
+                doc.querySelectorAll('style').forEach(styleEl => stage.appendChild(styleEl.cloneNode(true)));
+                Array.from(doc.body.childNodes).forEach(node => stage.appendChild(node.cloneNode(true)));
+                document.body.appendChild(stage);
+
+                stage.querySelectorAll('*:not(style)').forEach(el => {
+                    const computed = window.getComputedStyle(el);
+                    ['textAlign', 'fontFamily', 'fontWeight', 'fontStyle', 'textDecorationLine', 'color', 'backgroundColor', 'fontSize'].forEach(prop => {
+                        const val = computed[prop];
+                        if (val) el.style[prop] = val;
+                    });
+                });
+                stage.querySelectorAll('style').forEach(el => el.remove());
+                stage.querySelectorAll('*').forEach(el => el.removeAttribute('class'));
+
+                doc.body.innerHTML = stage.innerHTML;
+                document.body.removeChild(stage);
+            } else {
+                doc.querySelectorAll('*').forEach(el => el.removeAttribute('class'));
+            }
 
             doc.querySelectorAll('table').forEach(table => {
                 const col = table.querySelector('col');
