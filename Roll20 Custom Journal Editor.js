@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.18
+// @version      1.20
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.16');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.20');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -194,7 +194,8 @@ window.r20CustomEditorResetFonts = function() {
     }, true);
 
     /* ==========================================================================
-       [ 웹폰트 로드 ]
+       [ 웹폰트 로드 - 목록에 등록된 웹폰트 파일/CSS를 불러와 브라우저가 렌더링할
+         수 있게 한다 ]
        ========================================================================== */
     const loadWebFonts = () => {
         CUSTOM_FONTS.forEach(font => {
@@ -212,111 +213,7 @@ window.r20CustomEditorResetFonts = function() {
                 }
             }
         });
-
-        syncFontClassCSS();
     };
-
-    /* ==========================================================================
-       [ 폰트 지정용 CSS 클래스 동기화 ]
-       ========================================================================== */
-    const FONT_CLASS_PREFIX = 'r20-cf-';
-
-    const fontFamilyToClassSlug = (family) =>
-        FONT_CLASS_PREFIX + String(family).replace(/[^a-zA-Z0-9가-힣]/g, '').slice(0, 40);
-
-    const syncFontClassCSS = () => {
-        let styleEl = document.getElementById('r20-custom-font-classes');
-        if (!styleEl) {
-            styleEl = document.createElement('style');
-            styleEl.id = 'r20-custom-font-classes';
-            document.head.appendChild(styleEl);
-        }
-
-        const rules = CUSTOM_FONTS
-            .filter(font => font.family && font.family !== 'inherit')
-            .map(font => `.${fontFamilyToClassSlug(font.family)} { font-family: ${font.family} !important; }`)
-            .join('\n');
-
-        if (styleEl.textContent !== rules) {
-            styleEl.textContent = rules;
-        }
-    };
-
-    /* ==========================================================================
-       [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family를 걸러내는 문제를
-         우회하기 위해, 폰트가 적용된 핸드아웃 내용을 채팅을 통해 별도의 Roll20 API
-         스크립트("R20FontSync")로 전달한다. API 스크립트는 handout.set()으로
-         직접 저장하므로 브라우저 저장 시의 필터링을 거치지 않는다.
-         (동봉된 "R20FontSync.js"를 캠페인 설정 > API Scripts에 설치해야 동작함)
-         채팅 메시지 길이 제한을 피하기 위해 base64로 인코딩한 뒤 여러 조각으로
-         나눠서 순서대로 전송한다. 사람이 직접 입력할 필요 없이, 폰트가 적용된
-         핸드아웃 편집창에서 포커스가 벗어날 때(blur) 자동으로 실행된다. ]
-       ========================================================================== */
-    const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
-    const R20_FONT_SYNC_CHUNK_SIZE = 1200;
-    const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
-
-    const sendR20ChatMessage = (text) => new Promise((resolve) => {
-        const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
-        if (!textarea) { resolve(false); return; }
-
-        textarea.focus();
-        document.execCommand('selectAll', false, null);
-        document.execCommand('insertText', false, text);
-
-        setTimeout(() => {
-            ['keydown', 'keypress', 'keyup'].forEach(type => {
-                textarea.dispatchEvent(new KeyboardEvent(type, {
-                    key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
-                }));
-            });
-            resolve(true);
-        }, 50);
-    });
-
-    const base64EncodeUtf8 = (str) => btoa(unescape(encodeURIComponent(str)));
-
-    const r20FontSyncInFlight = new Set();
-
-    const syncFontStyledContentToServer = async (handoutId, field, html) => {
-        const syncKey = handoutId + ':' + field;
-        if (r20FontSyncInFlight.has(syncKey)) return;
-        r20FontSyncInFlight.add(syncKey);
-
-        try {
-            const b64 = base64EncodeUtf8(html);
-            const totalChunks = Math.max(1, Math.ceil(b64.length / R20_FONT_SYNC_CHUNK_SIZE));
-
-            for (let i = 0; i < totalChunks; i++) {
-                const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
-                const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunk}`;
-                const sent = await sendR20ChatMessage(command);
-                if (!sent) break;
-                await new Promise(r => setTimeout(r, R20_FONT_SYNC_CHUNK_DELAY_MS));
-            }
-        } finally {
-            r20FontSyncInFlight.delete(syncKey);
-        }
-    };
-
-    document.addEventListener('blur', (e) => {
-        const editor = e.target.closest && e.target.closest('.note-editable');
-        if (!editor) return;
-
-        const hasFontStyling = editor.querySelector(`font[face], [class*="${FONT_CLASS_PREFIX}"]`);
-        if (!hasFontStyling) return;
-
-        const dialog = editor.closest('[data-handoutid]');
-        const handoutId = dialog && dialog.getAttribute('data-handoutid');
-        if (!handoutId) return;
-
-        const field = editor.closest('.gmnotes') ? 'gmnotes' : 'notes';
-        const html = editor.innerHTML;
-
-        setTimeout(() => {
-            syncFontStyledContentToServer(handoutId, field, html);
-        }, 1500);
-    }, true);
 
     /* ==========================================================================
        [ 붙여넣기 시 서식 정리 ]
@@ -425,16 +322,15 @@ window.r20CustomEditorResetFonts = function() {
         const range = selection.getRangeAt(0);
         const cssProp = toCssPropertyName(styleProperty);
 
-        const useFontTag = styleProperty === 'fontFamily';
-        const fontClass = useFontTag ? fontFamilyToClassSlug(value) : null;
+        // fontFamily는 range.insertNode()로 span을 직접 DOM에 꽂으면 Roll20 저장 시
+        // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도 마찬가지).
+        // 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은 저장 후에도
+        // 그대로 유지되는 것을 실제 테스트로 확인함 - 그래서 fontFamily만 이 경로를 쓴다.
+        const useInsertHTML = styleProperty === 'fontFamily';
 
         if (!selection.isCollapsed) {
-            const span = document.createElement(useFontTag ? 'font' : 'span');
+            const span = document.createElement('span');
             span.style.setProperty(cssProp, value, 'important');
-            if (useFontTag) {
-                span.setAttribute('face', value);
-                span.classList.add(fontClass);
-            }
             span.appendChild(range.extractContents());
 
             span.querySelectorAll('*').forEach(el => {
@@ -445,24 +341,31 @@ window.r20CustomEditorResetFonts = function() {
             });
             if (styleProperty === 'fontFamily') {
                 span.querySelectorAll('font[face]').forEach(el => el.removeAttribute('face'));
-                span.querySelectorAll(`[class*="${FONT_CLASS_PREFIX}"]`).forEach(el => {
-                    Array.from(el.classList).forEach(c => {
-                        if (c.startsWith(FONT_CLASS_PREFIX)) el.classList.remove(c);
-                    });
-                    if (!el.classList.length) el.removeAttribute('class');
-                });
             } else if (styleProperty === 'color') {
                 span.querySelectorAll('font[color]').forEach(el => el.removeAttribute('color'));
             }
 
-            range.insertNode(span);
-        } else {
-            const span = document.createElement(useFontTag ? 'font' : 'span');
-            span.style.setProperty(cssProp, value, 'important');
-            if (useFontTag) {
-                span.setAttribute('face', value);
-                span.classList.add(fontClass);
+            if (useInsertHTML) {
+                document.execCommand('insertHTML', false, span.outerHTML);
+            } else {
+                range.insertNode(span);
             }
+        } else if (useInsertHTML) {
+            const markerId = 'r20fc-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            document.execCommand('insertHTML', false, `<span id="${markerId}" style="${cssProp}: ${value} !important;">&#8203;</span>`);
+
+            const inserted = document.getElementById(markerId);
+            if (inserted) {
+                inserted.removeAttribute('id');
+                const newRange = document.createRange();
+                newRange.setStart(inserted, 1);
+                newRange.collapse(true);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+            }
+        } else {
+            const span = document.createElement('span');
+            span.style.setProperty(cssProp, value, 'important');
             span.innerHTML = '&#8203;';
             range.insertNode(span);
 
