@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Roll20 Custom Journal Editor
+// @name         Custom Journal Editor
 // @namespace    http://tampermonkey.net/
 // @version      1.2
 // @author       오골계 (https://x.com/5golgyeo)
