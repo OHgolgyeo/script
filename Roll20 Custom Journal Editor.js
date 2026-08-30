@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.10
+// @version      1.11
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -91,7 +91,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.10');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.11');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -860,6 +860,44 @@ window.r20CustomEditorResetFonts = function() {
                     });
                 });
             });
+        });
+    };
+
+    /* ==========================================================================
+       [ 표 가운데 정렬 자동 보정 - 정렬값이 아예 없는 표(붙여넣기 등으로 유입된 표 포함)에
+         기본 가운데 정렬(margin:auto)을 적용. 편집창과 뷰어(읽기 전용 표시) 양쪽에서 동작 ]
+       ========================================================================== */
+    const normalizeTableAlignment = () => {
+        const tables = document.querySelectorAll(
+            '.note-editable table, .tox-edit-area table, .handoutviewer table'
+        );
+
+        tables.forEach(table => {
+            if (table.dataset.alignNormalized) return;
+
+            const hasMarginLeft = !!table.style.marginLeft;
+            const hasMarginRight = !!table.style.marginRight;
+
+            // 이미 marginLeft/Right가 (auto든 0이든) 설정된 표는 의도된 정렬로 보고 건드리지 않음.
+            if (hasMarginLeft || hasMarginRight) {
+                table.dataset.alignNormalized = 'true';
+                return;
+            }
+
+            const container = table.parentElement;
+            const containerWidth = container ? container.clientWidth : 0;
+            const tableWidth = table.offsetWidth;
+
+            // 아직 화면에 그려지기 전(너비 측정 불가)이면 다음 스캔에서 다시 시도
+            if (!containerWidth || !tableWidth) return;
+
+            // 표가 부모 영역보다 눈에 띄게 좁을 때만(=정렬이 실제로 의미 있을 때) 기본 가운데 정렬 적용
+            if (tableWidth < containerWidth * 0.98) {
+                table.style.marginLeft = 'auto';
+                table.style.marginRight = 'auto';
+            }
+
+            table.dataset.alignNormalized = 'true';
         });
     };
 
@@ -2380,6 +2418,7 @@ window.r20CustomEditorResetFonts = function() {
         fixColorDropdownClipping();
         enhanceTableMenu();
         makeTablesResizable();
+        normalizeTableAlignment();
         syncJournalSelectionStyles();
         syncLibrarySelectionStyles();
     };
