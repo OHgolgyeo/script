@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.20
+// @version      1.21
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.20');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.21');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -314,6 +314,58 @@ window.r20CustomEditorResetFonts = function() {
     const toCssPropertyName = (styleProperty) =>
         styleProperty.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 
+    // 여러 문단(블록 요소)에 걸친 선택 영역을 span 하나로 통째로 감싸면
+    // 인라인 태그가 블록 요소를 감싸는 잘못된 구조가 되어 레이아웃이 깨진다
+    // (<strong>이 표를 감쌀 때와 같은 문제). 그래서 블록 요소는 그대로 두고,
+    // 그 "안쪽" 내용물만 재귀적으로 span으로 감싼다.
+    const STYLE_WRAP_BLOCK_TAGS = ['DIV', 'P', 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TD', 'TH', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
+
+    const wrapInlineRuns = (parent, cssProp, value, styleProperty) => {
+        const children = Array.from(parent.childNodes);
+        let run = [];
+
+        const flush = () => {
+            if (!run.length) { run = []; return; }
+            const hasContent = run.some(n => n.nodeType !== 3 || n.textContent !== '');
+            if (hasContent) {
+                const span = document.createElement('span');
+                span.style.setProperty(cssProp, value, 'important');
+                parent.insertBefore(span, run[0]);
+                run.forEach(n => span.appendChild(n));
+
+                span.querySelectorAll('*').forEach(el => {
+                    if (el.style && el.style[styleProperty]) {
+                        el.style[styleProperty] = '';
+                        if (el.getAttribute('style') === '') el.removeAttribute('style');
+                    }
+                });
+                if (styleProperty === 'fontFamily') {
+                    span.querySelectorAll('font[face]').forEach(el => el.removeAttribute('face'));
+                } else if (styleProperty === 'color') {
+                    span.querySelectorAll('font[color]').forEach(el => el.removeAttribute('color'));
+                }
+            }
+            run = [];
+        };
+
+        children.forEach(node => {
+            if (node.nodeType === 1 && STYLE_WRAP_BLOCK_TAGS.includes(node.tagName)) {
+                flush();
+                wrapInlineRuns(node, cssProp, value, styleProperty);
+            } else {
+                run.push(node);
+            }
+        });
+        flush();
+    };
+
+    // fontFamily는 range.insertNode()로 span을 직접 DOM에 꽂으면 Roll20 저장 시
+    // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도 마찬가지).
+    // 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은 저장 후에도
+    // 그대로 유지되는 것을 실제 테스트로 확인함 - 그래서 fontFamily 적용 결과물은
+    // 항상 이 경로로 저장 직전에 다시 삽입한다(persistFontStyledContent 참고).
+    const FONT_PERSIST_ATTR = 'data-r20-font-live';
+
     const applyTextStyle = (styleProperty, value) => {
         restoreSelection();
         const selection = window.getSelection();
@@ -322,47 +374,14 @@ window.r20CustomEditorResetFonts = function() {
         const range = selection.getRangeAt(0);
         const cssProp = toCssPropertyName(styleProperty);
 
-        // fontFamily는 range.insertNode()로 span을 직접 DOM에 꽂으면 Roll20 저장 시
-        // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도 마찬가지).
-        // 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은 저장 후에도
-        // 그대로 유지되는 것을 실제 테스트로 확인함 - 그래서 fontFamily만 이 경로를 쓴다.
-        const useInsertHTML = styleProperty === 'fontFamily';
-
         if (!selection.isCollapsed) {
-            const span = document.createElement('span');
-            span.style.setProperty(cssProp, value, 'important');
-            span.appendChild(range.extractContents());
+            const container = document.createElement('div');
+            container.appendChild(range.extractContents());
+            wrapInlineRuns(container, cssProp, value, styleProperty);
 
-            span.querySelectorAll('*').forEach(el => {
-                if (el.style && el.style[styleProperty]) {
-                    el.style[styleProperty] = '';
-                    if (el.getAttribute('style') === '') el.removeAttribute('style');
-                }
-            });
-            if (styleProperty === 'fontFamily') {
-                span.querySelectorAll('font[face]').forEach(el => el.removeAttribute('face'));
-            } else if (styleProperty === 'color') {
-                span.querySelectorAll('font[color]').forEach(el => el.removeAttribute('color'));
-            }
-
-            if (useInsertHTML) {
-                document.execCommand('insertHTML', false, span.outerHTML);
-            } else {
-                range.insertNode(span);
-            }
-        } else if (useInsertHTML) {
-            const markerId = 'r20fc-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-            document.execCommand('insertHTML', false, `<span id="${markerId}" style="${cssProp}: ${value} !important;">&#8203;</span>`);
-
-            const inserted = document.getElementById(markerId);
-            if (inserted) {
-                inserted.removeAttribute('id');
-                const newRange = document.createRange();
-                newRange.setStart(inserted, 1);
-                newRange.collapse(true);
-                selection.removeAllRanges();
-                selection.addRange(newRange);
-            }
+            const fragment = document.createDocumentFragment();
+            while (container.firstChild) fragment.appendChild(container.firstChild);
+            range.insertNode(fragment);
         } else {
             const span = document.createElement('span');
             span.style.setProperty(cssProp, value, 'important');
@@ -375,7 +394,47 @@ window.r20CustomEditorResetFonts = function() {
             selection.removeAllRanges();
             selection.addRange(newRange);
         }
+
+        if (styleProperty === 'fontFamily') {
+            const editor = document.activeElement && document.activeElement.closest &&
+                document.activeElement.closest('.note-editable, .tox-edit-area');
+            if (editor) {
+                editor.querySelectorAll(`span[style*="font-family"]:not([${FONT_PERSIST_ATTR}])`)
+                    .forEach(el => el.setAttribute(FONT_PERSIST_ATTR, '1'));
+            }
+        }
     };
+
+    // 저장 직전(에디터 포커스 아웃 시점)에, DOM에 직접 삽입되어 있던 fontFamily
+    // span들을 execCommand('insertHTML')로 다시 삽입해 "붙여넣기와 같은 경로"를
+    // 거치게 만든다. 이렇게 해야 Roll20 저장 후에도 폰트가 유지된다.
+    const persistFontStyledContent = (editor) => {
+        const marked = Array.from(editor.querySelectorAll(`[${FONT_PERSIST_ATTR}]`));
+        if (!marked.length) return;
+
+        // 중첩된 것은 제외하고 최상위 요소만 처리
+        const topLevel = marked.filter(el => !marked.some(other => other !== el && other.contains(el)));
+
+        const selection = window.getSelection();
+        topLevel.forEach(el => {
+            if (!el.isConnected) return;
+            el.removeAttribute(FONT_PERSIST_ATTR);
+
+            const range = document.createRange();
+            range.selectNode(el);
+            selection.removeAllRanges();
+            selection.addRange(range);
+
+            document.execCommand('insertHTML', false, el.outerHTML);
+        });
+    };
+
+    document.addEventListener('blur', (e) => {
+        const editor = e.target.closest && e.target.closest('.note-editable, .tox-edit-area');
+        if (!editor) return;
+        if (!editor.querySelector(`[${FONT_PERSIST_ATTR}]`)) return;
+        persistFontStyledContent(editor);
+    }, true);
 
     /* ==========================================================================
        [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ]
