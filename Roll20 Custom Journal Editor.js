@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.27
+// @version      1.29
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -28,8 +28,8 @@ const DEFAULT_CUSTOM_FONTS = [
     { name: '기본 폰트', url: '', family: 'inherit' },
     { name: '나눔고딕', url: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap', family: "'Nanum Gothic', sans-serif" },
     { name: '나눔명조', url: 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap', family: "'Nanum Myeongjo', serif" },
-    { name: 'Gmarket Sans', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff', family: 'GmarketSansMedium' },
-    { name: 'Pretendard', url: 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css', family: 'Pretendard' }
+    { name: 'Noto Sans KR', url: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap', family: "'Noto Sans KR', sans-serif" },
+    { name: 'Gothic A1', url: 'https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700&display=swap', family: "'Gothic A1', sans-serif" }
 ];
 
 const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.27');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.29');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -271,6 +271,107 @@ window.r20CustomEditorResetFonts = function() {
             }
         });
     };
+
+    /* ==========================================================================
+       [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family/<style> 등을
+         걸러내는 문제를 우회하기 위해, 폰트가 적용된 핸드아웃 내용(+구글 폰트
+         @import 블록)을 채팅을 통해 별도의 Roll20 API 스크립트("R20FontSync")로
+         전달한다. API 스크립트는 handout.set()으로 직접 저장하므로 브라우저
+         저장 시의 필터링을 거치지 않는다.
+         (동봉된 "R20FontSync.js"를 캠페인 설정 > API Scripts에 설치해야 동작함.
+         GM 권한으로 채팅을 보낼 수 있어야 하므로 GM만 동작함)
+         채팅 메시지 길이 제한을 피하기 위해 base64로 인코딩한 뒤 여러 조각으로
+         나눠서 순서대로 전송한다. ]
+       ========================================================================== */
+    const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
+    const R20_FONT_SYNC_CHUNK_SIZE = 1200;
+    const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
+
+    // 저장된 콘텐츠에 실제로 살아남는 건 <style> 태그가 아니라 font-family
+    // "값"뿐이지만, 브라우저가 핸드아웃을 열 때마다 저장된 HTML을 한 번은
+    // 그대로 파싱/실행하기 때문에 <style>@import ...>가 그 순간 폰트를
+    // 로드시켜준다(태그 자체가 나중에 사라져도 이미 로드된 폰트는 유지됨).
+    // 구글 폰트(fonts.googleapis.com)만 이 방식이 확인되었으므로 그것만 포함.
+    const buildFontImportStyleBlock = () => {
+        const urls = [...new Set(
+            CUSTOM_FONTS
+                .filter(f => f.url && f.url.indexOf('fonts.googleapis.com') !== -1)
+                .map(f => f.url)
+        )];
+        if (urls.length === 0) return '';
+        return '<style>' + urls.map(u => `@import url('${u}');`).join('') + '</style>';
+    };
+
+    const sendR20ChatMessage = (text) => new Promise((resolve) => {
+        const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
+        if (!textarea) { resolve(false); return; }
+
+        textarea.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+
+        setTimeout(() => {
+            ['keydown', 'keypress', 'keyup'].forEach(type => {
+                textarea.dispatchEvent(new KeyboardEvent(type, {
+                    key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
+                }));
+            });
+            resolve(true);
+        }, 50);
+    });
+
+    const base64EncodeUtf8 = (str) => btoa(unescape(encodeURIComponent(str)));
+
+    const r20FontSyncInFlight = new Set();
+
+    const syncFontStyledContentToServer = async (handoutId, field, html) => {
+        if (!handoutId || !field) return;
+        const syncKey = handoutId + ':' + field;
+        if (r20FontSyncInFlight.has(syncKey)) return;
+        r20FontSyncInFlight.add(syncKey);
+
+        try {
+            const fullHtml = buildFontImportStyleBlock() + html;
+            const b64 = base64EncodeUtf8(fullHtml);
+            const totalChunks = Math.max(1, Math.ceil(b64.length / R20_FONT_SYNC_CHUNK_SIZE));
+
+            for (let i = 0; i < totalChunks; i++) {
+                const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
+                const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunk}`;
+                const sent = await sendR20ChatMessage(command);
+                if (!sent) {
+                    console.warn('[R20-Custom-Editor] 채팅창을 찾지 못해 폰트 서버 동기화를 못 보냈습니다.');
+                    break;
+                }
+                await new Promise(r => setTimeout(r, R20_FONT_SYNC_CHUNK_DELAY_MS));
+            }
+            console.log('[R20-Custom-Editor] 폰트 서버 동기화 완료: ' + handoutId + '/' + field);
+        } finally {
+            r20FontSyncInFlight.delete(syncKey);
+        }
+    };
+
+    // 편집 중인 각 에디터의 "마지막으로 확인된 내용"을 가볍게 캐시해뒀다가,
+    // 편집창이 실제로 닫히는 순간(DOM에서 사라지는 순간) 그 내용을 서버로
+    // 동기화한다. blur는 툴바 클릭 등에도 계속 발생해서 신뢰할 수 없기
+    // 때문에(v1.21 렉 문제 원인) 쓰지 않는다.
+    const getHandoutSyncContext = (editor) => {
+        const dialog = editor.closest('[data-handoutid]');
+        const handoutId = dialog && dialog.getAttribute('data-handoutid');
+        if (!handoutId) return null;
+        const field = editor.closest('.gmnotes') ? 'gmnotes' : 'notes';
+        return { handoutId, field };
+    };
+
+    const lastKnownEditorContent = new Map(); // editor element -> { handoutId, field, html }
+
+    document.addEventListener('input', (e) => {
+        const editor = e.target.closest && e.target.closest('.note-editable');
+        if (!editor) return;
+        const ctx = getHandoutSyncContext(editor);
+        if (!ctx) return;
+        lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
+    }, true);
 
     /* ==========================================================================
        [ 붙여넣기 시 서식 정리 ]
@@ -470,6 +571,16 @@ window.r20CustomEditorResetFonts = function() {
 
         editor.focus();
         editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
+
+        if (useInsertHTML) {
+            const ctx = getHandoutSyncContext(editor);
+            if (ctx) {
+                lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
+                syncFontStyledContentToServer(ctx.handoutId, ctx.field, editor.innerHTML);
+            } else {
+                console.warn('[R20-Custom-Editor] 핸드아웃 ID를 찾지 못해 폰트 서버 동기화를 건너뜁니다.');
+            }
+        }
 
         const newSelection = window.getSelection();
         if (newSelection && newSelection.rangeCount) {
@@ -2667,6 +2778,16 @@ window.r20CustomEditorResetFonts = function() {
 
     let mutationDebounceTimer = null;
     const observer = new MutationObserver(() => {
+        // 편집창이 실제로 닫혀서 DOM에서 사라진 에디터가 있으면, 마지막으로
+        // 캐시해둔 내용을 폰트 서버 동기화로 흘려보낸다(사라진 걸 확인하는
+        // 건 가벼운 isConnected 체크뿐이라 v1.21의 blur 렉 문제와는 다름).
+        lastKnownEditorContent.forEach((entry, editorEl) => {
+            if (!editorEl.isConnected) {
+                lastKnownEditorContent.delete(editorEl);
+                syncFontStyledContentToServer(entry.handoutId, entry.field, entry.html);
+            }
+        });
+
         clearTimeout(mutationDebounceTimer);
         mutationDebounceTimer = setTimeout(runEnhancer, 150);
     });
