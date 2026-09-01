@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.30
+// @version      1.31
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.30');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.31');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -306,9 +306,13 @@ window.r20CustomEditorResetFonts = function() {
         const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
         if (!textarea) { resolve(false); return; }
 
-        textarea.focus();
-        document.execCommand('selectAll', false, null);
-        document.execCommand('insertText', false, text);
+        // execCommand('insertText', ...)는 "지금 포커스된 곳"에 작동하는 방식이라
+        // 핸드아웃 편집창(모달)이 포커스를 다시 가져가버리면 채팅창이 아니라
+        // 핸드아웃 쪽에 입력돼버린다. 그래서 포커스 상태와 무관하게 textarea에
+        // 직접 값을 꽂아넣는 방식(네이티브 setter + input 이벤트)으로 대체한다.
+        const nativeValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        nativeValueSetter.call(textarea, text);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
 
         setTimeout(() => {
             ['keydown', 'keypress', 'keyup'].forEach(type => {
