@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.39
+// @version      1.40
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.39');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.40');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -597,7 +597,13 @@ window.r20CustomEditorResetFonts = function() {
             if (startOffset > 0) targetNode = targetNode.splitText(startOffset);
 
             const span = document.createElement('span');
-            span.style.setProperty(cssProp, value, 'important');
+            // font-family는 execCommand('insertHTML', ...)로 다시 삽입되는데,
+            // 그 과정에서 Roll20/Summernote 쪽이 style 속성을 재정리하면서
+            // "!important"를 제대로 못 알아보고 "important"를 폰트 이름처럼
+            // 따옴표로 감싸버리는 문제가 실측으로 확인됨. font-family는
+            // !important 없이 넣는다(insertHTML 경로라 굳이 필요하지도 않음).
+            const priority = cssProp === 'font-family' ? '' : 'important';
+            span.style.setProperty(cssProp, value, priority);
             targetNode.parentNode.insertBefore(span, targetNode);
             span.appendChild(targetNode);
             createdSpans.push(span);
@@ -630,7 +636,7 @@ window.r20CustomEditorResetFonts = function() {
             // 커서만 있고 선택된 글자가 없는 상태(타이핑 전에 폰트부터 고르는 경우)는
             // 실시간 입력 흐름을 방해하지 않도록 span을 직접 삽입한다.
             const span = document.createElement('span');
-            span.style.setProperty(cssProp, value, 'important');
+            span.style.setProperty(cssProp, value, cssProp === 'font-family' ? '' : 'important');
             span.textContent = '\u200B';
             range.insertNode(span);
 
