@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.23
+// @version      1.24
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.23');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.24');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -1023,6 +1023,27 @@ window.r20CustomEditorResetFonts = function() {
             }
 
             table.dataset.alignNormalized = 'true';
+        });
+    };
+
+    /* ==========================================================================
+       [ 문단(<p>) display:block을 저장되는 콘텐츠에 직접 박아넣기 ]
+       - Roll20 자체 CSS(.handoutviewer p { display:flex })가 text-align 정렬을
+         깨뜨리는 문제를, 스크립트가 없는 환경(다른 참가자 브라우저 등)에서도
+         정상 표시되도록 인라인 style로 저장 콘텐츠 자체에 고정한다.
+       - normalizeTableAlignment()와 동일한 패턴: 인라인 style은 저장 시
+         스크립트 없이도 살아남는 일반 CSS 속성이므로(글꼴 관련 속성과 달리)
+         execCommand('insertHTML') 없이 직접 DOM에 반영해도 됨.
+       ========================================================================== */
+    const bakeParagraphDisplayBlock = () => {
+        const paragraphs = document.querySelectorAll(
+            '.note-editable p, .tox-edit-area p, .handoutviewer p'
+        );
+
+        paragraphs.forEach(p => {
+            if (p.dataset.displayBaked) return;
+            p.style.display = 'block';
+            p.dataset.displayBaked = 'true';
         });
     };
 
@@ -2556,6 +2577,7 @@ window.r20CustomEditorResetFonts = function() {
         makeTablesResizable();
         fixInvalidInlineWrapping();
         normalizeTableAlignment();
+        bakeParagraphDisplayBlock();
         syncJournalSelectionStyles();
         syncLibrarySelectionStyles();
     };
