@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.2
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.1 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.2 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -586,14 +586,21 @@ window.r20CustomEditorResetFonts = function() {
         return createdSpans;
     };
 
-    // fontFamily는 DOM에 직접 꽂으면(insertBefore/appendChild) Roll20 저장 시
-    // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도
-    // 마찬가지). 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은
-    // 저장 후에도 그대로 유지되는 것을 실제 테스트(스크린샷)로 확인함 - 그래서
-    // fontFamily는 span을 만든 뒤 같은 자리에 insertHTML로 다시 삽입한다.
-    // (주의: 이 재삽입을 'blur' 이벤트에 걸면 안 됨 - 툴바 클릭만으로도 에디터에
-    // blur가 발생해서 매번 실행되며 렉/선택영역 꼬임을 일으킨다. 그래서 적용하는
-    // 바로 그 순간, 동기적으로 처리한다.)
+    // (예전 기록) fontFamily는 DOM에 직접 꽂으면(insertBefore/appendChild) Roll20
+    // 브라우저 저장 시 사라지는 것으로 확인되어, 한동안 span을 만든 뒤 같은
+    // 자리에 execCommand('insertHTML')로 "다시 삽입"하는 우회를 썼었다. 그런데
+    // 이미 폰트 크기 등으로 감싸져 있는 텍스트에 이걸 적용하면, execCommand가
+    // 선택 노드를 지우고 새로 넣는 과정에서 부모(예: 크기 span)가 일시적으로
+    // 비게 되어 브라우저가 그 빈 태그를 통째로 정리해버리는 부작용이 있었다
+    // (그 결과 폰트를 바꾸면 크기가 기본값으로 돌아가는 버그로 나타남).
+    // 지금은 폰트 저장 자체를 API 스크립트(R20FontSync.js, handout.set())가
+    // Roll20 브라우저 저장 필터를 우회해서 처리하므로, 이 insertHTML 재삽입은
+    // 더 이상 필요 없다 - 그냥 span을 만들어 제자리에 꽂기만 하면 된다(다른
+    // 스타일 속성들과 동일한 방식). 대신 폰트를 바꿀 때는 바로 아래에서
+    // syncFontStyledContentToServer를 호출해 API로 동기화한다.
+    // (주의: 이 동기화 호출을 'blur' 이벤트에 걸면 안 됨 - 툴바 클릭만으로도
+    // 에디터에 blur가 발생해서 매번 실행되며 렉/선택영역 꼬임을 일으킨다.
+    // 그래서 적용하는 바로 그 순간, 동기적으로 처리한다.)
     const applyTextStyle = (styleProperty, value) => {
         if (!restoreSelection()) return;
         const selection = window.getSelection();
@@ -604,7 +611,7 @@ window.r20CustomEditorResetFonts = function() {
         if (!editor || !editor.contains(range.commonAncestorContainer)) return;
 
         const cssProp = toCssPropertyName(styleProperty);
-        const useInsertHTML = styleProperty === 'fontFamily';
+        const isFontFamily = styleProperty === 'fontFamily';
 
         if (selection.isCollapsed) {
             // 커서만 있고 선택된 글자가 없는 상태(타이핑 전에 폰트부터 고르는 경우)는
@@ -625,23 +632,12 @@ window.r20CustomEditorResetFonts = function() {
             return;
         }
 
-        const createdSpans = wrapSelectedTextRuns(editor, range, cssProp, value);
-
-        if (useInsertHTML) {
-            createdSpans.reverse().forEach(span => {
-                if (!span.isConnected) return;
-                const r = document.createRange();
-                r.selectNode(span);
-                selection.removeAllRanges();
-                selection.addRange(r);
-                document.execCommand('insertHTML', false, span.outerHTML);
-            });
-        }
+        wrapSelectedTextRuns(editor, range, cssProp, value);
 
         editor.focus();
         editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
 
-        if (useInsertHTML) {
+        if (isFontFamily) {
             const ctx = getHandoutSyncContext(editor);
             if (ctx) {
                 lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
