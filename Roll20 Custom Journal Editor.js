@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  지원 기능: 본문 이미지 첨부, 글자 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기, 구글 문서 붙여넣을 시 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.0 (Free)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.1 (Free)');
 
     /* [ 글자 크기 설정 영역 ] */
     const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
@@ -1016,7 +1016,9 @@
         tables.forEach(table => {
             if (table.dataset.resizableInit) return;
             table.dataset.resizableInit = 'true';
-            table.style.tableLayout = 'fixed';
+            table.style.setProperty('table-layout', 'fixed', 'important');
+
+            const editorEl = getEditorFromNode(table);
 
             const rows = table.rows;
             if (!rows || rows.length === 0) return;
@@ -1039,12 +1041,22 @@
                     const mouseMoveHandler = (e) => {
                         const dx = e.clientX - x;
                         const newWidth = Math.max(20, w + dx);
-                        cell.style.width = newWidth + 'px';
+                        cell.style.setProperty('width', newWidth + 'px', 'important');
                     };
 
                     const mouseUpHandler = () => {
                         document.removeEventListener('mousemove', mouseMoveHandler);
                         document.removeEventListener('mouseup', mouseUpHandler);
+
+                        // 드래그로 바꾼 폭은 DOM에만 반영될 뿐 서머노트가
+                        // "내용이 바뀌었다"고 인식하지 못해서, 저장 시점에
+                        // 이 변경 전의 내용이 저장되고 표가 폰트 크기 등
+                        // 내용 기준 auto 레이아웃으로 되돌아가 보이는 문제가
+                        // 있었다. input 이벤트를 직접 쏴서 변경을 알리고,
+                        // width 속성도 같이 남겨 이중으로 보존한다.
+                        const finalWidth = parseInt(cell.style.width, 10);
+                        if (!isNaN(finalWidth)) cell.setAttribute('width', String(finalWidth));
+                        if (editorEl) notifyEditorContentChanged(editorEl);
                     };
 
                     resizer.addEventListener('mousedown', (e) => {
@@ -1071,12 +1083,16 @@
                     const rowMouseMoveHandler = (e) => {
                         const dy = e.clientY - ry;
                         const newHeight = Math.max(16, rh + dy);
-                        row.style.height = newHeight + 'px';
+                        row.style.setProperty('height', newHeight + 'px', 'important');
                     };
 
                     const rowMouseUpHandler = () => {
                         document.removeEventListener('mousemove', rowMouseMoveHandler);
                         document.removeEventListener('mouseup', rowMouseUpHandler);
+
+                        const finalHeight = parseInt(row.style.height, 10);
+                        if (!isNaN(finalHeight)) row.setAttribute('height', String(finalHeight));
+                        if (editorEl) notifyEditorContentChanged(editorEl);
                     };
 
                     rowResizer.addEventListener('mousedown', (e) => {
