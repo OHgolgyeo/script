@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.14
+// @version      1.15
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -72,7 +72,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.14 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.15 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -2153,35 +2153,56 @@ window.r20CustomEditorResetFonts = function() {
             wrapper.className = 'custom-color-picker-wrapper';
             wrapper.style.cssText = 'padding: 8px; border-top: 1px solid #ccc; margin-top: 5px; font-size: 11px; background: #fff; position: relative; z-index: 99999; box-sizing:border-box;';
 
-            // 모든 줄이 같은 4열(라벨 / 색상·두께입력 / px라벨 / 드롭다운) 그리드를
-            // 공유한다. 색상 입력칸과 두께 입력칸이 같은 열(같은 너비, 같은
-            // 시작 위치)에 놓이고, 두 드롭다운도 같은 열을 공유해서 세로로
-            // 정확히 줄이 맞는다. align-items:end로 전부 하단 기준 정렬.
+            // flex/grid로는 두 줄의 칸 너비가 미묘하게 어긋나는 문제가 반복돼서,
+            // 열 너비가 확실히 고정되는 <table> + table-layout:fixed로 아예
+            // 바꿨다. 같은 열(<col>)을 쓰니 색상칸/두께칸, 두 드롭다운이 항상
+            // 같은 너비·같은 시작 위치를 갖고, vertical-align:bottom으로 모든
+            // 칸이 확실하게 바닥 기준으로 정렬된다.
             wrapper.innerHTML = `
-                <div style="display:grid; grid-template-columns: 34px 34px auto minmax(0, 1fr); align-items:end; gap:6px; row-gap:6px;">
-                    <span style="color:#333; white-space:nowrap; font-size:11px; line-height:22px;">커스텀</span>
-                    <input type="color" class="custom-picker-input" value="#ff0000" style="width:100%; height:22px; padding:0; border:1px solid #ccc; cursor:pointer; box-sizing:border-box;">
-                    <span></span>
-                    <select class="custom-picker-type" style="width:100%; min-width:0; height:22px; font-size:11px; padding:0 2px; box-sizing:border-box;">
-                        <option value="color">글자색</option>
-                        <option value="backgroundColor">글자 배경색</option>
-                        <option value="tableCellBg">표 칸 배경색</option>
-                        <option value="tableCellBorder">표 칸 테두리</option>
-                        <option value="hrStyle">가름줄(구분선)</option>
-                    </select>
-
-                    <label class="custom-border-row-label" style="display:none; margin:0; color:#333; white-space:nowrap; font-size:11px; line-height:22px;">두께</label>
-                    <input type="number" class="custom-border-width" value="1" min="1" max="20" style="display:none; width:100%; height:22px; font-size:11px; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000; box-sizing:border-box;">
-                    <span class="custom-border-px-label" style="display:none; color:#333; font-size:11px; line-height:22px;">px</span>
-                    <select class="custom-border-style" style="display:none; width:100%; min-width:0; height:22px; font-size:11px; padding:0 2px; box-sizing:border-box;">
-                        <option value="solid">실선</option>
-                        <option value="dashed">파선</option>
-                        <option value="dotted">점선</option>
-                        <option value="double">이중선</option>
-                    </select>
-
-                    <button type="button" class="custom-border-apply btn btn-primary btn-sm" style="grid-column: 2 / -1; width:100%; cursor:pointer; padding:5px 8px; box-sizing:border-box;">적용</button>
-                </div>
+                <table style="width:100%; border-collapse:collapse; table-layout:fixed;">
+                    <colgroup>
+                        <col style="width:34px;">
+                        <col style="width:34px;">
+                        <col style="width:20px;">
+                        <col>
+                    </colgroup>
+                    <tr>
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0; font-size:11px; color:#333;">커스텀</td>
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0;">
+                            <input type="color" class="custom-picker-input" value="#ff0000" style="display:block; width:100%; height:22px; padding:0; border:1px solid #ccc; cursor:pointer; box-sizing:border-box;">
+                        </td>
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0;"></td>
+                        <td style="vertical-align:bottom; padding:0 0 6px 0;">
+                            <select class="custom-picker-type" style="display:block; width:100%; height:22px; font-size:11px; padding:0 2px; box-sizing:border-box;">
+                                <option value="color">글자색</option>
+                                <option value="backgroundColor">글자 배경색</option>
+                                <option value="tableCellBg">표 칸 배경색</option>
+                                <option value="tableCellBorder">표 칸 테두리</option>
+                                <option value="hrStyle">가름줄(구분선)</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr class="custom-border-row" style="display:none;">
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0; font-size:11px; color:#333;">두께</td>
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0;">
+                            <input type="number" class="custom-border-width" value="1" min="1" max="20" style="display:block; width:100%; height:22px; font-size:11px; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000; box-sizing:border-box;">
+                        </td>
+                        <td style="vertical-align:bottom; padding:0 4px 6px 0; font-size:11px; color:#333;">px</td>
+                        <td style="vertical-align:bottom; padding:0 0 6px 0;">
+                            <select class="custom-border-style" style="display:block; width:100%; height:22px; font-size:11px; padding:0 2px; box-sizing:border-box;">
+                                <option value="solid">실선</option>
+                                <option value="dashed">파선</option>
+                                <option value="dotted">점선</option>
+                                <option value="double">이중선</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td colspan="4" style="padding:0;">
+                            <button type="button" class="custom-border-apply btn btn-primary btn-sm" style="display:block; width:100%; cursor:pointer; padding:5px 8px; box-sizing:border-box;">적용</button>
+                        </td>
+                    </tr>
+                </table>
             `;
 
             wrapper.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -2189,17 +2210,14 @@ window.r20CustomEditorResetFonts = function() {
 
             const colorInput = wrapper.querySelector('.custom-picker-input');
             const typeSelect = wrapper.querySelector('.custom-picker-type');
-            const borderRowLabel = wrapper.querySelector('.custom-border-row-label');
+            const borderRow = wrapper.querySelector('.custom-border-row');
             const borderWidthInput = wrapper.querySelector('.custom-border-width');
-            const borderPxLabel = wrapper.querySelector('.custom-border-px-label');
             const borderStyleSelect = wrapper.querySelector('.custom-border-style');
-            const borderRowElements = [borderRowLabel, borderWidthInput, borderPxLabel, borderStyleSelect];
 
             const usesBorderOptions = () => typeSelect.value === 'tableCellBorder' || typeSelect.value === 'hrStyle';
 
             typeSelect.addEventListener('change', () => {
-                const show = usesBorderOptions();
-                borderRowElements.forEach(el => { el.style.display = show ? '' : 'none'; });
+                borderRow.style.display = usesBorderOptions() ? 'table-row' : 'none';
             });
 
             const applyByType = (color) => {
