@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.26
+// @version      1.27
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.26');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.27');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -226,6 +226,34 @@ window.r20CustomEditorResetFonts = function() {
        [ 웹폰트 로드 - 목록에 등록된 웹폰트 파일/CSS를 불러와 브라우저가 렌더링할
          수 있게 한다 ]
        ========================================================================== */
+    /* ==========================================================================
+       [ 구글 폰트 임베드 코드 자동 인식 ]
+       - fonts.google.com에서 제공하는 <link>/@import 코드를 그대로 붙여넣으면
+         font-family 이름과 CSS URL을 자동으로 뽑아준다.
+       ========================================================================== */
+    const parseGoogleFontsCode = (text) => {
+        if (!text) return null;
+
+        // css? / css2? 둘 다 대응 (@import, <link href>, 그냥 URL 텍스트 전부 매칭)
+        const urlMatch = text.match(/https:\/\/fonts\.googleapis\.com\/css2?\?[^\s'")<>]+/);
+        if (!urlMatch) return null;
+        const url = urlMatch[0];
+
+        const familyMatch = url.match(/family=([^&]+)/);
+        if (!familyMatch) return null;
+
+        let familyRaw = decodeURIComponent(familyMatch[1]).split('|')[0];
+        familyRaw = familyRaw.split(':')[0]; // :wght@... 굵기 지정 제거
+        const fontName = familyRaw.replace(/\+/g, ' ').trim();
+        if (!fontName) return null;
+
+        return {
+            name: fontName,
+            family: `'${fontName}', sans-serif`,
+            url
+        };
+    };
+
     const loadWebFonts = () => {
         CUSTOM_FONTS.forEach(font => {
             if (font.url && !document.querySelector(`link[href="${font.url}"], style[data-font="${font.name}"]`)) {
@@ -1736,6 +1764,14 @@ window.r20CustomEditorResetFonts = function() {
         pop.innerHTML = `
             <label style="display:block; margin:0; color:#555; font-weight:bold;">🔤 폰트 목록 설정</label>
             <div class="r20-font-list" style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; border:1px solid #eee; border-radius:4px; padding:4px;"></div>
+
+            <label style="display:block; margin:0; color:#555; font-weight:bold; font-size:11px;">📋 구글 폰트 코드 붙여넣기 (자동 인식)</label>
+            <textarea class="r20-font-google-paste" placeholder="fonts.google.com에서 복사한 코드를 그대로 붙여넣으세요.&#10;예: @import url('https://fonts.googleapis.com/css2?family=...'); 또는 &lt;link href=&quot;...&quot;&gt;" style="width:100%; height:50px; font-size:11px; padding:4px; border:1px solid #ccc; box-sizing:border-box; resize:vertical; font-family:inherit;"></textarea>
+            <button type="button" class="r20-font-google-parse-btn btn btn-default btn-sm" style="width:100%; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">🔍 자동 인식해서 아래 칸 채우기</button>
+            <div class="r20-font-google-parse-msg" style="font-size:10px; color:#a00; min-height:12px;"></div>
+
+            <hr style="width:100%; margin:2px 0; border-top:1px dashed #eee;">
+
             <div style="display:flex; gap:4px;">
                 <input type="text" class="r20-font-name-input" placeholder="이름 (예: 내 폰트)" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
                 <input type="text" class="r20-font-family-input" placeholder="font-family 값" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
@@ -1782,6 +1818,27 @@ window.r20CustomEditorResetFonts = function() {
         };
         renderFontList();
 
+        pop.querySelector('.r20-font-google-parse-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const pasteEl = pop.querySelector('.r20-font-google-paste');
+            const msgEl = pop.querySelector('.r20-font-google-parse-msg');
+            const parsed = parseGoogleFontsCode(pasteEl.value);
+
+            if (!parsed) {
+                msgEl.style.color = '#a00';
+                msgEl.textContent = '구글 폰트 코드에서 URL을 못 찾았어요. fonts.google.com에서 복사한 코드가 맞는지 확인해주세요.';
+                return;
+            }
+
+            pop.querySelector('.r20-font-name-input').value = parsed.name;
+            pop.querySelector('.r20-font-family-input').value = parsed.family;
+            pop.querySelector('.r20-font-url-input').value = parsed.url;
+            msgEl.style.color = '#080';
+            msgEl.textContent = `"${parsed.name}" 인식 완료! 아래 "+ 폰트 추가" 버튼을 눌러주세요.`;
+        });
+
         const closeOnOutsideClick = (ev) => {
             if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
                 pop.remove();
@@ -1814,6 +1871,8 @@ window.r20CustomEditorResetFonts = function() {
             nameInput.value = '';
             familyInput.value = '';
             urlInput.value = '';
+            pop.querySelector('.r20-font-google-paste').value = '';
+            pop.querySelector('.r20-font-google-parse-msg').textContent = '';
         });
 
         pop.querySelector('.r20-font-save-btn').addEventListener('click', (e) => {
@@ -1850,6 +1909,8 @@ window.r20CustomEditorResetFonts = function() {
             workingSizes = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONT_SIZES));
             renderFontList();
             pop.querySelector('.r20-fontsize-list-input').value = workingSizes.join(', ');
+            pop.querySelector('.r20-font-google-paste').value = '';
+            pop.querySelector('.r20-font-google-parse-msg').textContent = '';
         });
     };
 
