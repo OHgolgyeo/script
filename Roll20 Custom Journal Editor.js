@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.22
+// @version      1.23
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.22');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.23');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -142,20 +142,49 @@ window.r20CustomEditorResetFonts = function() {
        [ 공통 유틸 - 선택영역(커서) 저장/복원 ]
        ========================================================================== */
     let savedRange = null;
+    let savedEditor = null;
+
+    const getEditorFromNode = (node) => {
+        if (!node) return null;
+        const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        if (!element || !element.closest) return null;
+        return element.closest('.note-editable, .tox-edit-area') || null;
+    };
 
     const saveSelection = () => {
         const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-            savedRange = selection.getRangeAt(0).cloneRange();
-        }
+        if (!selection || !selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const editor = getEditorFromNode(range.commonAncestorContainer);
+        if (!editor) return;
+
+        savedRange = range.cloneRange();
+        savedEditor = editor;
     };
 
     const restoreSelection = () => {
         const selection = window.getSelection();
-        if (savedRange && selection) {
-            selection.removeAllRanges();
-            selection.addRange(savedRange);
+        if (!selection) return false;
+
+        // 저장된 선택 영역이 없거나 더 이상 유효하지 않으면, 지금 살아있는 선택이
+        // 에디터 안에 있는지 확인해서 그거라도 사용한다(기존 동작과의 호환성 유지 -
+        // 색상/크기 등 다른 툴바 컨트롤은 별도의 mousedown 저장 없이도 동작해왔음).
+        if (!savedRange || (savedEditor && !savedEditor.isConnected)) {
+            savedRange = null;
+            savedEditor = null;
+
+            if (selection.rangeCount > 0) {
+                const liveRange = selection.getRangeAt(0);
+                const liveEditor = getEditorFromNode(liveRange.commonAncestorContainer);
+                if (liveEditor) return true;
+            }
+            return false;
         }
+
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+        return true;
     };
 
     /* ==========================================================================
@@ -314,93 +343,110 @@ window.r20CustomEditorResetFonts = function() {
     const toCssPropertyName = (styleProperty) =>
         styleProperty.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 
-    // 여러 문단(블록 요소)에 걸친 선택 영역을 span 하나로 통째로 감싸면
-    // 인라인 태그가 블록 요소를 감싸는 잘못된 구조가 되어 레이아웃이 깨진다
-    // (<strong>이 표를 감쌀 때와 같은 문제). 그래서 블록 요소는 그대로 두고,
-    // 그 "안쪽" 내용물만 재귀적으로 span으로 감싼다.
-    const STYLE_WRAP_BLOCK_TAGS = ['DIV', 'P', 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TR', 'TD', 'TH', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-
-    const wrapInlineRuns = (parent, cssProp, value, styleProperty) => {
-        const children = Array.from(parent.childNodes);
-        let run = [];
-
-        const flush = () => {
-            if (!run.length) { run = []; return; }
-            const hasContent = run.some(n => n.nodeType !== 3 || n.textContent !== '');
-            if (hasContent) {
-                const span = document.createElement('span');
-                span.style.setProperty(cssProp, value, 'important');
-                parent.insertBefore(span, run[0]);
-                run.forEach(n => span.appendChild(n));
-
-                span.querySelectorAll('*').forEach(el => {
-                    if (el.style && el.style[styleProperty]) {
-                        el.style[styleProperty] = '';
-                        if (el.getAttribute('style') === '') el.removeAttribute('style');
-                    }
-                });
-                if (styleProperty === 'fontFamily') {
-                    span.querySelectorAll('font[face]').forEach(el => el.removeAttribute('face'));
-                } else if (styleProperty === 'color') {
-                    span.querySelectorAll('font[color]').forEach(el => el.removeAttribute('color'));
-                }
-            }
-            run = [];
-        };
-
-        children.forEach(node => {
-            if (node.nodeType === 1 && STYLE_WRAP_BLOCK_TAGS.includes(node.tagName)) {
-                flush();
-                wrapInlineRuns(node, cssProp, value, styleProperty);
-            } else {
-                run.push(node);
+    // 선택 영역을 span 하나로 통째로 감싸면(extractContents 방식) 여러 문단/표에
+    // 걸친 선택일 때 인라인 태그가 블록 요소(p, td 등)를 감싸는 잘못된 구조가 되어
+    // 레이아웃이 깨진다(<strong>이 표를 감쌀 때와 같은 문제). 그래서 블록 구조는
+    // 절대 건드리지 않고, 선택 영역과 겹치는 "텍스트 노드"만 찾아 그 안에서 선택된
+    // 부분만 잘라(splitText) 각각 별도의 span으로 감싼다. p/td/strong 등 기존 구조는
+    // 제자리에 그대로 남는다.
+    const wrapSelectedTextRuns = (editor, range, cssProp, value) => {
+        const textNodes = [];
+        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
+                if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
             }
         });
-        flush();
+        let n;
+        while ((n = walker.nextNode())) textNodes.push(n);
+
+        const createdSpans = [];
+
+        // 뒤에서부터 처리해야 앞쪽 노드를 바꿀 때 range 위치가 흔들리지 않는다.
+        for (let i = textNodes.length - 1; i >= 0; i--) {
+            const textNode = textNodes[i];
+            if (!textNode.parentNode) continue;
+
+            let startOffset = textNode === range.startContainer ? range.startOffset : 0;
+            let endOffset = textNode === range.endContainer ? range.endOffset : textNode.nodeValue.length;
+            startOffset = Math.max(0, Math.min(startOffset, textNode.nodeValue.length));
+            endOffset = Math.max(0, Math.min(endOffset, textNode.nodeValue.length));
+            if (startOffset >= endOffset) continue;
+
+            let targetNode = textNode;
+            if (endOffset < targetNode.nodeValue.length) targetNode.splitText(endOffset);
+            if (startOffset > 0) targetNode = targetNode.splitText(startOffset);
+
+            const span = document.createElement('span');
+            span.style.setProperty(cssProp, value, 'important');
+            targetNode.parentNode.insertBefore(span, targetNode);
+            span.appendChild(targetNode);
+            createdSpans.push(span);
+        }
+
+        return createdSpans;
     };
 
-    // fontFamily는 range.insertNode()로 span을 직접 DOM에 꽂으면 Roll20 저장 시
-    // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도 마찬가지).
-    // 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은 저장 후에도
-    // 그대로 유지되는 것을 실제 테스트로 확인함 - 그래서 선택 영역이 있는 상태에서
-    // fontFamily를 적용할 땐 이 경로를 쓴다.
-    // (주의: 이 처리를 'blur' 이벤트에 걸면 안 됨 - 툴바의 드롭다운/버튼을 클릭할 때도
-    // 에디터에 blur가 발생하기 때문에, 저장 시점이 아니라 매 클릭마다 실행되어
-    // 렉과 선택 영역 꼬임을 일으킨다. 그래서 적용 시점에 바로 처리한다.)
+    // fontFamily는 DOM에 직접 꽂으면(insertBefore/appendChild) Roll20 저장 시
+    // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도
+    // 마찬가지). 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은
+    // 저장 후에도 그대로 유지되는 것을 실제 테스트(스크린샷)로 확인함 - 그래서
+    // fontFamily는 span을 만든 뒤 같은 자리에 insertHTML로 다시 삽입한다.
+    // (주의: 이 재삽입을 'blur' 이벤트에 걸면 안 됨 - 툴바 클릭만으로도 에디터에
+    // blur가 발생해서 매번 실행되며 렉/선택영역 꼬임을 일으킨다. 그래서 적용하는
+    // 바로 그 순간, 동기적으로 처리한다.)
     const applyTextStyle = (styleProperty, value) => {
-        restoreSelection();
+        if (!restoreSelection()) return;
         const selection = window.getSelection();
-        if (!selection.rangeCount) return;
+        if (!selection || !selection.rangeCount) return;
 
         const range = selection.getRangeAt(0);
+        const editor = getEditorFromNode(range.commonAncestorContainer);
+        if (!editor || !editor.contains(range.commonAncestorContainer)) return;
+
         const cssProp = toCssPropertyName(styleProperty);
         const useInsertHTML = styleProperty === 'fontFamily';
 
-        if (!selection.isCollapsed) {
-            const container = document.createElement('div');
-            container.appendChild(range.extractContents());
-            wrapInlineRuns(container, cssProp, value, styleProperty);
-
-            if (useInsertHTML) {
-                document.execCommand('insertHTML', false, container.innerHTML);
-            } else {
-                const fragment = document.createDocumentFragment();
-                while (container.firstChild) fragment.appendChild(container.firstChild);
-                range.insertNode(fragment);
-            }
-        } else {
+        if (selection.isCollapsed) {
             // 커서만 있고 선택된 글자가 없는 상태(타이핑 전에 폰트부터 고르는 경우)는
-            // 실시간 입력 흐름을 방해하지 않도록 기존 방식(span 직접 삽입)을 그대로 쓴다.
+            // 실시간 입력 흐름을 방해하지 않도록 span을 직접 삽입한다.
             const span = document.createElement('span');
             span.style.setProperty(cssProp, value, 'important');
-            span.innerHTML = '&#8203;';
+            span.textContent = '\u200B';
             range.insertNode(span);
 
             const newRange = document.createRange();
-            newRange.setStart(span, 1);
+            newRange.setStart(span.firstChild, 1);
             newRange.collapse(true);
             selection.removeAllRanges();
             selection.addRange(newRange);
+
+            savedRange = newRange.cloneRange();
+            savedEditor = editor;
+            return;
+        }
+
+        const createdSpans = wrapSelectedTextRuns(editor, range, cssProp, value);
+
+        if (useInsertHTML) {
+            createdSpans.reverse().forEach(span => {
+                if (!span.isConnected) return;
+                const r = document.createRange();
+                r.selectNode(span);
+                selection.removeAllRanges();
+                selection.addRange(r);
+                document.execCommand('insertHTML', false, span.outerHTML);
+            });
+        }
+
+        editor.focus();
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
+
+        const newSelection = window.getSelection();
+        if (newSelection && newSelection.rangeCount) {
+            savedRange = newSelection.getRangeAt(0).cloneRange();
+            savedEditor = editor;
         }
     };
 
@@ -1849,10 +1895,16 @@ window.r20CustomEditorResetFonts = function() {
             `;
 
             const selectEl = wrapper.querySelector('.custom-font-select');
+            // select가 포커스를 가져가면서 에디터의 선택 영역이 사라지기 전에
+            // 먼저 저장해둔다.
+            selectEl.addEventListener('mousedown', () => saveSelection(), true);
+            selectEl.addEventListener('pointerdown', () => saveSelection(), true);
             selectEl.addEventListener('change', (e) => {
-                if (e.target.value) {
-                    applyTextStyle('fontFamily', e.target.value);
+                const value = e.target.value;
+                if (value) {
+                    applyTextStyle('fontFamily', value);
                 }
+                e.target.selectedIndex = 0;
             });
 
             const sizeSelectEl = wrapper.querySelector('.custom-fontsize-select');
@@ -2332,10 +2384,15 @@ window.r20CustomEditorResetFonts = function() {
        [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ]
        ========================================================================== */
     document.addEventListener('selectionchange', () => {
-        const activeEl = document.activeElement;
-        if (activeEl && (activeEl.classList.contains('note-editable') || activeEl.closest('.note-editable, .tox-edit-area'))) {
-            saveSelection();
-        }
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return;
+
+        const range = selection.getRangeAt(0);
+        const editor = getEditorFromNode(range.commonAncestorContainer);
+        if (!editor) return;
+
+        // 실제 핸드아웃 편집 영역에서 발생한 선택만 저장
+        saveSelection();
     });
 
     document.addEventListener('paste', handlePasteFormatting, true);
