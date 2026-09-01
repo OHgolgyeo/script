@@ -3,8 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      1.0
 // @author       오골계 (https://x.com/5golgyeo)
-// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 하이퍼링크 추가·삭제, 글자 크기 지정 및 목록 설정창을 통한 크기 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제) [폰트(글꼴) 지정 기능은 Roll20 저장 시 서버가 걸러내 저장 후 사라지는 문제가 있어 이 버전에는 포함하지 않았습니다. 글자 크기는 서버가 걸러내지 않아 모두에게 그대로 적용되므로 이 버전에도 포함되어 있습니다. 폰트(글꼴) 지정이 가능한 프로 버전이 별도로 있습니다.]
-// @match        https://app.roll20.net/editor/*
+// @description  지원 기능: 본문 이미지 첨부, 글자 크기 지정, 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기, 구글 문서 붙여넣을 시 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
 // @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
