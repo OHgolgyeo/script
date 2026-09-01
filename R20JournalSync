@@ -1,0 +1,170 @@
+/*
+ * R20JournalSync
+ * ---------------------------------------------------------------------------
+ * Roll20 Custom Journal Editor(Tampermonkey 스크립트)의 폰트 유지 기능과 짝을 이루는 API 스크립트입니다.
+ *
+ * Roll20은 핸드아웃을 "저장"할 때(브라우저 편집기를 통해) style 속성의 font-family, <font> 태그, 사용자 정의 class 속성을 서버 단에서 걸러냅니다.
+ * 그래서 브라우저 편집기로 아무리 폰트를 지정해도 저장 후 다시 열면 사라집니다.
+ *
+ * 브라우저 편집기가 아니라 API 스크립트(이 파일)가 handout.set()으로 직접 데이터를 저장하면 이 필터를 거치지 않습니다. 
+ * Tampermonkey 스크립트가 폰트가 적용된 핸드아웃 내용을 채팅 메시지를 통해 이 스크립트로 전달하면,
+ * 이 스크립트가 받아서 handout.set()으로 다시 저장해줍니다.
+ *
+ * 이 스크립트는 사람이 직접 쓰는 명령어가 아닙니다 - 
+ * Tampermonkey 쪽 스크립트가 핸드아웃 편집을 마칠 때(포커스가 벗어날 때) 자동으로,
+ * 조용히 채팅을 통해 신호를 보내고, 이 스크립트가 그걸 받아서 처리합니다.
+ * ---------------------------------------------------------------------------
+ */
+
+var R20JournalSync = R20JournalSync || (function () {
+    'use strict';
+
+    // Roll20 API 샌드박스에는 Node.js의 Buffer 전역 객체가 없다(실측 확인:
+    // "Buffer is not defined"). 그래서 base64 디코딩을 순수 JS로 직접 구현한다.
+    var BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+    var base64DecodeToBytes = function (b64) {
+        var clean = String(b64).replace(/[^A-Za-z0-9+/=]/g, '');
+        var bytes = [];
+        var buffer = 0, bits = 0;
+        for (var i = 0; i < clean.length; i++) {
+            var c = clean.charAt(i);
+            if (c === '=') break;
+            var val = BASE64_CHARS.indexOf(c);
+            if (val === -1) continue;
+            buffer = (buffer << 6) | val;
+            bits += 6;
+            if (bits >= 8) {
+                bits -= 8;
+                bytes.push((buffer >> bits) & 0xFF);
+            }
+        }
+        return bytes;
+    };
+
+    var utf8BytesToString = function (bytes) {
+        var result = '';
+        var i = 0;
+        while (i < bytes.length) {
+            var byte1 = bytes[i++];
+            if (byte1 < 0x80) {
+                result += String.fromCharCode(byte1);
+            } else if ((byte1 & 0xE0) === 0xC0) {
+                var b2 = bytes[i++];
+                result += String.fromCharCode(((byte1 & 0x1F) << 6) | (b2 & 0x3F));
+            } else if ((byte1 & 0xF0) === 0xE0) {
+                var b2b = bytes[i++];
+                var b3 = bytes[i++];
+                result += String.fromCharCode(((byte1 & 0x0F) << 12) | ((b2b & 0x3F) << 6) | (b3 & 0x3F));
+            } else if ((byte1 & 0xF8) === 0xF0) {
+                var b2c = bytes[i++];
+                var b3c = bytes[i++];
+                var b4 = bytes[i++];
+                var codepoint = ((byte1 & 0x07) << 18) | ((b2c & 0x3F) << 12) | ((b3c & 0x3F) << 6) | (b4 & 0x3F);
+                codepoint -= 0x10000;
+                result += String.fromCharCode(0xD800 + (codepoint >> 10), 0xDC00 + (codepoint & 0x3FF));
+            }
+        }
+        return result;
+    };
+
+    var base64ToUtf8 = function (b64) {
+        return utf8BytesToString(base64DecodeToBytes(b64));
+    };
+
+    // handoutId:field -> { total, chunks: [] }
+    var buffers = {};
+
+    // 오래된(미완성으로 남은) 버퍼가 계속 쌓이는 걸 막기 위한 정리 주기
+    var BUFFER_TTL_MS = 2 * 60 * 1000;
+
+    var touchBuffer = function (key) {
+        buffers[key].touchedAt = Date.now();
+    };
+
+    var cleanupStaleBuffers = function () {
+        var now = Date.now();
+        Object.keys(buffers).forEach(function (key) {
+            if (now - (buffers[key].touchedAt || 0) > BUFFER_TTL_MS) {
+                delete buffers[key];
+            }
+        });
+    };
+
+    var handleChatMessage = function (msg) {
+        if (msg.type !== 'api') return;
+        if (msg.content.indexOf('!r20fontsync') !== 0) return;
+        if (!playerIsGM(msg.playerid)) return;
+
+        // !r20fontsync <handoutId> <field> <chunkIndex> <totalChunks> <base64chunk>
+        var parts = msg.content.split(' ');
+        var handoutId = parts[1];
+        var field = parts[2];
+        var chunkIndex = parseInt(parts[3], 10);
+        var totalChunks = parseInt(parts[4], 10);
+        var b64Chunk = parts.slice(5).join(' ');
+
+        if (!handoutId || (field !== 'notes' && field !== 'gmnotes') ||
+            isNaN(chunkIndex) || isNaN(totalChunks) || totalChunks <= 0) {
+            log('[R20JournalSync] 잘못된 형식의 메시지 무시: ' + msg.content.slice(0, 80));
+            return;
+        }
+
+        cleanupStaleBuffers();
+
+        var key = handoutId + ':' + field;
+
+        if (!buffers[key] || buffers[key].total !== totalChunks) {
+            buffers[key] = { total: totalChunks, chunks: new Array(totalChunks) };
+        }
+
+        buffers[key].chunks[chunkIndex] = b64Chunk;
+        touchBuffer(key);
+
+        var buf = buffers[key];
+        var receivedCount = 0;
+        for (var i = 0; i < buf.total; i++) {
+            if (typeof buf.chunks[i] !== 'undefined') receivedCount++;
+        }
+
+        if (receivedCount < buf.total) return;
+
+        var fullB64 = buf.chunks.join('');
+        delete buffers[key];
+
+        var html;
+        try {
+            var cleanB64 = fullB64.replace(/\s+/g, '');
+            html = base64ToUtf8(cleanB64);
+        } catch (e) {
+            log('[R20JournalSync] base64 디코딩 실패 (handout: ' + handoutId + '): ' + e.message);
+            sendChat('R20JournalSync', '/w gm ❌ 폰트 저장 실패 (데이터가 손상되었습니다) - 다시 시도해주세요.');
+            return;
+        }
+
+        var handout = getObj('handout', handoutId);
+        if (!handout) {
+            log('[R20JournalSync] 핸드아웃을 찾을 수 없음: ' + handoutId);
+            sendChat('R20JournalSync', '/w gm ❌ 폰트 저장 실패 (핸드아웃을 찾을 수 없습니다)');
+            return;
+        }
+
+        var setObj = {};
+        setObj[field] = html;
+        handout.set(setObj);
+
+        log('[R20JournalSync] 동기화 완료: handout=' + handoutId + ' field=' + field + ' (' + html.length + '자)');
+        sendChat('R20JournalSync', '/w gm ✅ "' + handout.get('name') + '" 저장 완료');
+    };
+
+    var registerEventHandlers = function () {
+        on('chat:message', handleChatMessage);
+    };
+
+    on('ready', function () {
+        registerEventHandlers();
+        log('[R20JournalSync] 로드 완료 - Roll20 Custom Journal Editor의 폰트 유지 기능과 연동됩니다.');
+    });
+
+    return {};
+})();
