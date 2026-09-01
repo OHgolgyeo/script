@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 2.3 (Free)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.0 (Free)');
 
     /* [ 글자 크기 설정 영역 ] */
     const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
