@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.15
+// @version      1.16
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -72,7 +72,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.15 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.16 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -123,6 +123,30 @@ window.r20CustomEditorResetFonts = function() {
                 text-align: left !important;
                 width: 100% !important;
                 clear: both !important;
+            }
+
+            /* 배경색/글자색 팝업(.dropdown-menu)의 너비를 max-content로 바꾸는
+               과정에서, 원래 퍼센트(%) 너비로 좌우 두 칸을 나누던 내부의
+               "Background Color"/"Foreground Color" 칸(.note-palette)이 기준으로
+               삼을 너비를 잃어서 겹치거나 세로로 밀려버리는 문제가 있었다.
+               퍼센트 대신 고정 px로 못박아서 이 문제를 피한다. */
+            .dropdown-menu .note-palette {
+                display: inline-block !important;
+                vertical-align: top !important;
+                width: 170px !important;
+                box-sizing: border-box !important;
+            }
+
+            /* 커스텀 패널에 쓴 <table>이 롤20 페이지 자체의 표 스타일(테두리 등)을
+               물려받지 않도록 명시적으로 없앤다. */
+            .custom-color-picker-wrapper table {
+                border: none !important;
+                margin: 0 !important;
+                border-spacing: 0 !important;
+            }
+            .custom-color-picker-wrapper td,
+            .custom-color-picker-wrapper th {
+                border: none !important;
             }
         `;
         document.head.appendChild(style);
