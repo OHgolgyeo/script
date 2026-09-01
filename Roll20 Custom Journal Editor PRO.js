@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.10
+// @version      1.12
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
-// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20PRO.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20PRO.js
 // ==/UserScript==
 
 /* [ 폰트 설정 영역 ] */
@@ -72,7 +72,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.10 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.12 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -2154,10 +2154,10 @@ window.r20CustomEditorResetFonts = function() {
             wrapper.style.cssText = 'padding: 8px; border-top: 1px solid #ccc; margin-top: 5px; font-size: 11px; background: #fff; position: relative; z-index: 99999;';
 
             wrapper.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <span style="color:#333; font-weight:bold;">🎨 커스텀:</span>
-                    <input type="color" class="custom-picker-input" value="#ff0000" style="width: 26px; height: 22px; padding: 0; border: 1px solid #ccc; cursor: pointer; vertical-align: middle;">
-                    <select class="custom-picker-type" style="height: 22px; font-size: 11px; padding: 0 2px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <span style="color:#333; font-weight:bold; white-space:nowrap;">🎨 커스텀:</span>
+                    <input type="color" class="custom-picker-input" value="#ff0000" style="flex:0 0 auto; width: 26px; height: 22px; padding: 0; border: 1px solid #ccc; cursor: pointer; box-sizing:border-box;">
+                    <select class="custom-picker-type" style="flex:0 0 auto; width: 88px; height: 22px; font-size: 11px; padding: 0 2px; box-sizing:border-box; text-overflow:ellipsis; overflow:hidden;">
                         <option value="color">글자색</option>
                         <option value="backgroundColor">글자 배경색</option>
                         <option value="tableCellBg">표 칸 배경색</option>
@@ -2165,16 +2165,18 @@ window.r20CustomEditorResetFonts = function() {
                         <option value="hrStyle">가름줄(구분선)</option>
                     </select>
                 </div>
-                <div class="custom-border-options" style="display:none; align-items:center; justify-content:flex-end; gap:4px; margin-top:6px;">
-                    <label style="margin:0; color:#333;">두께</label>
-                    <input type="number" class="custom-border-width" value="1" min="1" max="20" style="width: 36px; height: 20px; font-size: 11px; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000;">
+                <div class="custom-border-options" style="display:none; align-items:center; gap:4px; margin-top:6px;">
+                    <label style="margin:0; color:#333; white-space:nowrap;">두께</label>
+                    <input type="number" class="custom-border-width" value="1" min="1" max="20" style="width: 36px; height: 20px; font-size: 11px; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000; box-sizing:border-box;">
                     <span>px</span>
-                    <select class="custom-border-style" style="height: 20px; font-size: 11px; padding: 0 2px;">
+                    <select class="custom-border-style" style="height: 20px; font-size: 11px; padding: 0 2px; box-sizing:border-box;">
                         <option value="solid">실선</option>
                         <option value="dashed">파선</option>
                         <option value="dotted">점선</option>
                         <option value="double">이중선</option>
                     </select>
+                </div>
+                <div style="display:flex; justify-content:flex-end; margin-top:6px;">
                     <button type="button" class="custom-border-apply btn btn-primary btn-sm" style="cursor:pointer; padding:2px 8px;">적용</button>
                 </div>
             `;
@@ -2221,6 +2223,14 @@ window.r20CustomEditorResetFonts = function() {
 
     const positionFixedDropdown = (menu, toggleBtn) => {
         if (!menu || !toggleBtn) return;
+
+        // position을 fixed로 바꾸기 전에 원래(제자리에 있을 때) 너비를 한 번만
+        // 재서 고정해준다. 안 그러면 내부에 배경색/글자색 두 칸이 나란히 배치된
+        // 레이아웃이 너비를 잃고 서로 겹쳐 보이는 문제가 있었다.
+        if (!menu.style.width) {
+            const naturalWidth = menu.offsetWidth;
+            if (naturalWidth > 0) menu.style.width = naturalWidth + 'px';
+        }
 
         menu.style.position = 'fixed';
         menu.style.zIndex = '999999';
