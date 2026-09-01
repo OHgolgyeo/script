@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.5
+// @version      1.6
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -10,20 +10,7 @@
 // @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
 // ==/UserScript==
 
-/* ==========================================================================
-   [ 폰트 설정 영역 ]
-   - 아래 DEFAULT_* 배열은 "최초 1회" 기본값일 뿐입니다.
-   - 실제로 사용되는 폰트/크기 목록은 브라우저의 localStorage에 저장되며,
-     스크립트를 업데이트해도(파일 자체가 통째로 교체되어도) 그 값은 지워지지 않습니다.
-   - 목록 추가/삭제는 툴바의 폰트 드롭다운 옆 ⚙ 버튼을 눌러 뜨는 설정창에서
-     할 수 있습니다(저장하면 바로 적용, 새로고침 불필요).
-   - 콘솔(F12)로도 직접 다룰 수 있습니다(고급 사용자용, 한 번에 여러 개 넣을 때 편리):
-
-       r20CustomEditorSetFonts([
-           { name: '기본 폰트', url: '', family: 'inherit' },
-           { name: '내 폰트', url: '웹폰트 css 주소(없으면 빈 문자열)', family: "'폰트이름', sans-serif" }
-       ]);
-   ========================================================================== */
+/* [ 폰트 설정 영역 ] */
 const DEFAULT_CUSTOM_FONTS = [
     { name: '기본 폰트', url: '', family: 'inherit' },
     { name: '나눔고딕', url: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap', family: "'Nanum Gothic', sans-serif" },
@@ -85,7 +72,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.5 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.6 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -138,9 +125,7 @@ window.r20CustomEditorResetFonts = function() {
         document.head.appendChild(style);
     }
 
-    /* ==========================================================================
-       [ 공통 유틸 - 선택영역(커서) 저장/복원 ]
-       ========================================================================== */
+    /* [ 공통 유틸 - 선택영역(커서) 저장/복원 ] */
     let savedRange = null;
     let savedEditor = null;
 
@@ -167,9 +152,6 @@ window.r20CustomEditorResetFonts = function() {
         const selection = window.getSelection();
         if (!selection) return false;
 
-        // 저장된 선택 영역이 없거나 더 이상 유효하지 않으면, 지금 살아있는 선택이
-        // 에디터 안에 있는지 확인해서 그거라도 사용한다(기존 동작과의 호환성 유지 -
-        // 색상/크기 등 다른 툴바 컨트롤은 별도의 mousedown 저장 없이도 동작해왔음).
         if (!savedRange || (savedEditor && !savedEditor.isConnected)) {
             savedRange = null;
             savedEditor = null;
@@ -187,9 +169,7 @@ window.r20CustomEditorResetFonts = function() {
         return true;
     };
 
-    /* ==========================================================================
-       [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
-       ========================================================================== */
+    /* [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ] */
     const toggleCustomPopover = (popoverId, openFn) => {
         const existing = document.getElementById(popoverId);
         if (existing) {
@@ -202,9 +182,7 @@ window.r20CustomEditorResetFonts = function() {
         openFn();
     };
 
-    /* ==========================================================================
-       [ 가름줄(<hr>) 선택 상태 추적 ]
-       ========================================================================== */
+    /* [ 가름줄(<hr>) 선택 상태 추적 ] */
     let selectedHrEl = null;
 
     document.addEventListener('click', (e) => {
@@ -222,19 +200,12 @@ window.r20CustomEditorResetFonts = function() {
         }
     }, true);
 
-    /* ==========================================================================
-       [ 웹폰트 로드 - 목록에 등록된 웹폰트 파일/CSS를 불러와 브라우저가 렌더링할
-         수 있게 한다 ]
-       ========================================================================== */
-    /* ==========================================================================
-       [ 구글 폰트 임베드 코드 자동 인식 ]
-       - fonts.google.com에서 제공하는 <link>/@import 코드를 그대로 붙여넣으면
-         font-family 이름과 CSS URL을 자동으로 뽑아준다.
-       ========================================================================== */
+    /* [ 웹폰트 로드 - 목록에 등록된 웹폰트 파일/CSS를 불러와 브라우저가 렌더링할
+         수 있게 한다 ] */
+    /* [ 구글 폰트 임베드 코드 자동 인식 ] */
     const parseGoogleFontsCode = (text) => {
         if (!text) return null;
 
-        // css? / css2? 둘 다 대응 (@import, <link href>, 그냥 URL 텍스트 전부 매칭)
         const urlMatch = text.match(/https:\/\/fonts\.googleapis\.com\/css2?\?[^\s'")<>]+/);
         if (!urlMatch) return null;
         const url = urlMatch[0];
@@ -243,7 +214,7 @@ window.r20CustomEditorResetFonts = function() {
         if (!familyMatch) return null;
 
         let familyRaw = decodeURIComponent(familyMatch[1]).split('|')[0];
-        familyRaw = familyRaw.split(':')[0]; // :wght@... 굵기 지정 제거
+        familyRaw = familyRaw.split(':')[0];
         const fontName = familyRaw.replace(/\+/g, ' ').trim();
         if (!fontName) return null;
 
@@ -272,8 +243,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family/<style> 등을
+    /* [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family/<style> 등을
          걸러내는 문제를 우회하기 위해, 폰트가 적용된 핸드아웃 내용(+구글 폰트
          @import 블록)을 채팅을 통해 별도의 Roll20 API 스크립트("R20FontSync")로
          전달한다. API 스크립트는 handout.set()으로 직접 저장하므로 브라우저
@@ -281,16 +251,9 @@ window.r20CustomEditorResetFonts = function() {
          (동봉된 "R20FontSync.js"를 캠페인 설정 > API Scripts에 설치해야 동작함.
          GM 권한으로 채팅을 보낼 수 있어야 하므로 GM만 동작함)
          채팅 메시지 길이 제한을 피하기 위해 base64로 인코딩한 뒤 여러 조각으로
-         나눠서 순서대로 전송한다. ]
-       ========================================================================== */
+         나눠서 순서대로 전송한다. ] */
     const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
-    // 메시지 총 길이 자체는 문제가 아님(평소 1000자 안팎 로그도 잘 보내짐).
-    // 문제는 "공백 없이 이어진 긴 단어"였음(실측: 500자 안팎 단일 토큰은
-    // 전송이 씹히고, 100자 안팎은 정상 전송됨 — 아마 자동완성/맞춤법 관련
-    // 실시간 파싱이 긴 토큰에서 막히는 것으로 보임). 그래서 청크를 잘게
-    // 쪼개는 대신, 큰 청크를 유지하되 base64 안에 일정 간격으로 공백을
-    // 끼워넣어 "긴 단어"가 생기지 않게 한다(서버 쪽에서 공백만 제거하고
-    // 디코딩하면 되므로 내용에는 영향 없음).
+
     const R20_FONT_SYNC_CHUNK_SIZE = 800;
     const R20_FONT_SYNC_WORD_BREAK_INTERVAL = 40;
     const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
@@ -303,11 +266,6 @@ window.r20CustomEditorResetFonts = function() {
         return parts.join(' ');
     };
 
-    // 저장된 콘텐츠에 실제로 살아남는 건 <style> 태그가 아니라 font-family
-    // "값"뿐이지만, 브라우저가 핸드아웃을 열 때마다 저장된 HTML을 한 번은
-    // 그대로 파싱/실행하기 때문에 <style>@import ...>가 그 순간 폰트를
-    // 로드시켜준다(태그 자체가 나중에 사라져도 이미 로드된 폰트는 유지됨).
-    // 구글 폰트(fonts.googleapis.com)만 이 방식이 확인되었으므로 그것만 포함.
     const buildFontImportStyleBlock = () => {
         const urls = [...new Set(
             CUSTOM_FONTS
@@ -318,10 +276,6 @@ window.r20CustomEditorResetFonts = function() {
         return '<style>' + urls.map(u => `@import url('${u}');`).join('') + '</style>';
     };
 
-    // Roll20 좌측 사이드바는 jQuery UI 탭(채팅/저널/...) 구조라서, 저널 탭이
-    // 활성화된 상태(핸드아웃 편집 중)에는 채팅 탭 내용이 화면에서 비활성 상태가
-    // 되어 그 안의 textarea를 건드려도 Roll20이 "진짜 입력"으로 받아주지 않는다.
-    // 그래서 채팅 탭으로 잠깐 전환 → 명령어 전송 → 원래 탭으로 복귀하는 방식을 쓴다.
     const R20_CHAT_TAB_ID = 'textchattab';
 
     const clickR20Tab = (tabId) => {
@@ -340,9 +294,6 @@ window.r20CustomEditorResetFonts = function() {
         const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
         if (!textarea) { resolve(false); return; }
 
-        // execCommand('insertText', ...)는 "지금 포커스된 곳"에 작동하는
-        // 방식이라, 포커스 상태와 무관하게 textarea에 직접 값을 꽂아넣는
-        // 방식(네이티브 setter + input 이벤트)을 쓴다.
         const nativeValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
         nativeValueSetter.call(textarea, text);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -351,18 +302,11 @@ window.r20CustomEditorResetFonts = function() {
         setTimeout(() => {
             if (document.activeElement !== textarea) textarea.focus();
 
-            // textarea에 class="ui-autocomplete-input"이 붙어있다는 건 jQuery UI
-            // Autocomplete 위젯이 연결돼있다는 뜻. "!"로 시작하는 명령어를 넣으면
-            // Roll20의 API 명령어 자동완성 목록이 뜨는데, 그 목록이 열려있는 채로
-            // Enter를 보내면 위젯이 그 Enter를 가로채 "메시지 전송"이 아니라
-            // "자동완성 항목 선택"으로 처리해버려 입력값만 사라지고 실제 전송은
-            // 안 되는 문제가 있었다. Enter 보내기 직전에 강제로 닫아준다.
             try {
                 const jq = window.jQuery || window.$;
                 if (jq && jq.fn && jq.fn.autocomplete) jq(textarea).autocomplete('close');
-            } catch (e) { /* 무시 */ }
-            // 혹시 위 방법이 안 통할 경우를 대비해 Escape도 한 번 보내둔다
-            // (jQuery UI Autocomplete는 기본적으로 Escape에 팝업을 닫도록 반응한다).
+            } catch (e) {  }
+
             textarea.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true
             }));
@@ -386,8 +330,6 @@ window.r20CustomEditorResetFonts = function() {
         if (r20FontSyncInFlight.has(syncKey)) return;
         r20FontSyncInFlight.add(syncKey);
 
-        // 조각이 여러 개여도 탭 전환은 전체 전송 과정에서 딱 한 번만 한다
-        // (조각마다 탭을 왔다갔다 하면 타이밍이 꼬여서 일부가 유실될 수 있음).
         const previousTabId = getActiveR20TabId();
         const switchedTab = !!(previousTabId && previousTabId !== R20_CHAT_TAB_ID && clickR20Tab(R20_CHAT_TAB_ID));
         if (switchedTab) await new Promise(r => setTimeout(r, 120));
@@ -414,10 +356,6 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    // 편집 중인 각 에디터의 "마지막으로 확인된 내용"을 가볍게 캐시해뒀다가,
-    // 편집창이 실제로 닫히는 순간(DOM에서 사라지는 순간) 그 내용을 서버로
-    // 동기화한다. blur는 툴바 클릭 등에도 계속 발생해서 신뢰할 수 없기
-    // 때문에(v1.21 렉 문제 원인) 쓰지 않는다.
     const getHandoutSyncContext = (editor) => {
         const dialog = editor.closest('[data-handoutid]');
         const handoutId = dialog && dialog.getAttribute('data-handoutid');
@@ -426,7 +364,7 @@ window.r20CustomEditorResetFonts = function() {
         return { handoutId, field };
     };
 
-    const lastKnownEditorContent = new Map(); // editor element -> { handoutId, field, html }
+    const lastKnownEditorContent = new Map();
 
     document.addEventListener('input', (e) => {
         const editor = e.target.closest && e.target.closest('.note-editable');
@@ -436,9 +374,7 @@ window.r20CustomEditorResetFonts = function() {
         lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
     }, true);
 
-    /* ==========================================================================
-       [ 붙여넣기 시 서식 정리 ]
-       ========================================================================== */
+    /* [ 붙여넣기 시 서식 정리 ] */
     const handlePasteFormatting = (e) => {
         const activeEl = document.activeElement;
         if (!activeEl || !activeEl.closest('.note-editable, .tox-edit-area')) return;
@@ -529,18 +465,10 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 텍스트 스타일 적용 - 글자색/글자 배경색/폰트 공통 ]
-       ========================================================================== */
+    /* [ 텍스트 스타일 적용 - 글자색/글자 배경색/폰트 공통 ] */
     const toCssPropertyName = (styleProperty) =>
         styleProperty.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 
-    // 선택 영역을 span 하나로 통째로 감싸면(extractContents 방식) 여러 문단/표에
-    // 걸친 선택일 때 인라인 태그가 블록 요소(p, td 등)를 감싸는 잘못된 구조가 되어
-    // 레이아웃이 깨진다(<strong>이 표를 감쌀 때와 같은 문제). 그래서 블록 구조는
-    // 절대 건드리지 않고, 선택 영역과 겹치는 "텍스트 노드"만 찾아 그 안에서 선택된
-    // 부분만 잘라(splitText) 각각 별도의 span으로 감싼다. p/td/strong 등 기존 구조는
-    // 제자리에 그대로 남는다.
     const wrapSelectedTextRuns = (editor, range, cssProp, value) => {
         const textNodes = [];
         const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
@@ -555,7 +483,6 @@ window.r20CustomEditorResetFonts = function() {
 
         const createdSpans = [];
 
-        // 뒤에서부터 처리해야 앞쪽 노드를 바꿀 때 range 위치가 흔들리지 않는다.
         for (let i = textNodes.length - 1; i >= 0; i--) {
             const textNode = textNodes[i];
             if (!textNode.parentNode) continue;
@@ -571,11 +498,7 @@ window.r20CustomEditorResetFonts = function() {
             if (startOffset > 0) targetNode = targetNode.splitText(startOffset);
 
             const span = document.createElement('span');
-            // font-family는 execCommand('insertHTML', ...)로 다시 삽입되는데,
-            // 그 과정에서 Roll20/Summernote 쪽이 style 속성을 재정리하면서
-            // "!important"를 제대로 못 알아보고 "important"를 폰트 이름처럼
-            // 따옴표로 감싸버리는 문제가 실측으로 확인됨. font-family는
-            // !important 없이 넣는다(insertHTML 경로라 굳이 필요하지도 않음).
+
             const priority = cssProp === 'font-family' ? '' : 'important';
             span.style.setProperty(cssProp, value, priority);
             targetNode.parentNode.insertBefore(span, targetNode);
@@ -586,21 +509,6 @@ window.r20CustomEditorResetFonts = function() {
         return createdSpans;
     };
 
-    // (예전 기록) fontFamily는 DOM에 직접 꽂으면(insertBefore/appendChild) Roll20
-    // 브라우저 저장 시 사라지는 것으로 확인되어, 한동안 span을 만든 뒤 같은
-    // 자리에 execCommand('insertHTML')로 "다시 삽입"하는 우회를 썼었다. 그런데
-    // 이미 폰트 크기 등으로 감싸져 있는 텍스트에 이걸 적용하면, execCommand가
-    // 선택 노드를 지우고 새로 넣는 과정에서 부모(예: 크기 span)가 일시적으로
-    // 비게 되어 브라우저가 그 빈 태그를 통째로 정리해버리는 부작용이 있었다
-    // (그 결과 폰트를 바꾸면 크기가 기본값으로 돌아가는 버그로 나타남).
-    // 지금은 폰트 저장 자체를 API 스크립트(R20FontSync.js, handout.set())가
-    // Roll20 브라우저 저장 필터를 우회해서 처리하므로, 이 insertHTML 재삽입은
-    // 더 이상 필요 없다 - 그냥 span을 만들어 제자리에 꽂기만 하면 된다(다른
-    // 스타일 속성들과 동일한 방식). 대신 폰트를 바꿀 때는 바로 아래에서
-    // syncFontStyledContentToServer를 호출해 API로 동기화한다.
-    // (주의: 이 동기화 호출을 'blur' 이벤트에 걸면 안 됨 - 툴바 클릭만으로도
-    // 에디터에 blur가 발생해서 매번 실행되며 렉/선택영역 꼬임을 일으킨다.
-    // 그래서 적용하는 바로 그 순간, 동기적으로 처리한다.)
     const applyTextStyle = (styleProperty, value) => {
         if (!restoreSelection()) return;
         const selection = window.getSelection();
@@ -614,8 +522,7 @@ window.r20CustomEditorResetFonts = function() {
         const isFontFamily = styleProperty === 'fontFamily';
 
         if (selection.isCollapsed) {
-            // 커서만 있고 선택된 글자가 없는 상태(타이핑 전에 폰트부터 고르는 경우)는
-            // 실시간 입력 흐름을 방해하지 않도록 span을 직접 삽입한다.
+
             const span = document.createElement('span');
             span.style.setProperty(cssProp, value, cssProp === 'font-family' ? '' : 'important');
             span.textContent = '\u200B';
@@ -654,9 +561,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ]
-       ========================================================================== */
+    /* [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ] */
 
     const buildTableGrid = (table) => {
         const grid = [];
@@ -749,9 +654,7 @@ window.r20CustomEditorResetFonts = function() {
         return cells;
     };
 
-    /* ==========================================================================
-       [ 표 칸 합치기 / 나누기 ]
-       ========================================================================== */
+    /* [ 표 칸 합치기 / 나누기 ] */
 
     const mergeSelectedTableCells = () => {
         const cells = getSelectedTableCells();
@@ -870,9 +773,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 표 칸 배경색 / 테두리, 가름줄 스타일 적용 ]
-       ========================================================================== */
+    /* [ 표 칸 배경색 / 테두리, 가름줄 스타일 적용 ] */
 
     const applyTableCellBackground = (color) => {
         restoreSelection();
@@ -908,9 +809,7 @@ window.r20CustomEditorResetFonts = function() {
         selectedHrEl.style.height = '0';
     };
 
-    /* ==========================================================================
-       [ 가름줄(구분선) 삽입 팝업 UI ]
-       ========================================================================== */
+    /* [ 가름줄(구분선) 삽입 팝업 UI ] */
 
     const insertStyledHr = (editor, color, widthPx, style) => {
         editor.focus();
@@ -1028,9 +927,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 이미지 URL 정리 & 라이트박스(확대보기) ]
-       ========================================================================== */
+    /* [ 이미지 URL 정리 & 라이트박스(확대보기) ] */
     const cleanRoll20ImageUrl = (rawUrl) => {
         if (!rawUrl) return '';
         let clean = rawUrl.replace(/(\/thumb\.png|\/med\.png|\/max\.png)/g, '/original.png');
@@ -1057,9 +954,7 @@ window.r20CustomEditorResetFonts = function() {
         document.body.appendChild(box);
     };
 
-    /* ==========================================================================
-       [ 표 크기 조절 - 열 너비 / 행 높이 드래그 ]
-       ========================================================================== */
+    /* [ 표 크기 조절 - 열 너비 / 행 높이 드래그 ] */
     const makeTablesResizable = () => {
         const tables = document.querySelectorAll('.note-editable table, .tox-edit-area table');
 
@@ -1142,9 +1037,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 ]
-       ========================================================================== */
+    /* [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 ] */
     const fixInvalidInlineWrapping = () => {
         const INLINE_SELECTOR = 'strong, b, em, i, u, font';
         const BLOCK_TAGS = ['DIV', 'TABLE', 'P', 'UL', 'OL', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
@@ -1185,7 +1078,6 @@ window.r20CustomEditorResetFonts = function() {
             }
         });
 
-        // 구조가 바뀐 표들은 컨테이너 너비가 달라졌을 수 있으니 정렬 판정을 다시 하도록 플래그 초기화
         if (changedAny) {
             document.querySelectorAll('.note-editable table, .tox-edit-area table, .handoutviewer table').forEach(t => {
                 delete t.dataset.alignNormalized;
@@ -1193,9 +1085,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 표 가운데 정렬 자동 보정 ]
-       ========================================================================== */
+    /* [ 표 가운데 정렬 자동 보정 ] */
     const normalizeTableAlignment = () => {
         const tables = document.querySelectorAll(
             '.note-editable table, .tox-edit-area table, .handoutviewer table'
@@ -1207,7 +1097,6 @@ window.r20CustomEditorResetFonts = function() {
             const hasMarginLeft = !!table.style.marginLeft;
             const hasMarginRight = !!table.style.marginRight;
 
-            // 이미 marginLeft/Right가 (auto든 0이든) 설정된 표는 의도된 정렬로 보고 건드리지 않음.
             if (hasMarginLeft || hasMarginRight) {
                 table.dataset.alignNormalized = 'true';
                 return;
@@ -1217,10 +1106,8 @@ window.r20CustomEditorResetFonts = function() {
             const containerWidth = container ? container.clientWidth : 0;
             const tableWidth = table.offsetWidth;
 
-            // 아직 화면에 그려지기 전(너비 측정 불가)이면 다음 스캔에서 다시 시도
             if (!containerWidth || !tableWidth) return;
 
-            // 표가 부모 영역보다 눈에 띄게 좁을 때만(=정렬이 실제로 의미 있을 때) 기본 가운데 정렬 적용
             if (tableWidth < containerWidth * 0.98) {
                 table.style.marginLeft = 'auto';
                 table.style.marginRight = 'auto';
@@ -1230,14 +1117,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ v1.24에서 잘못 저장된 잔재 정리 ]
-       - v1.24가 각 <p>에 data-display-baked + style="display:block"을 직접
-         저장 콘텐츠에 박아넣었다가, 옛 저장물에서 예기치 못한 렌더링(볼드처럼
-         보이는 현상)을 일으키는 게 확인되어 v1.25에서 해당 기능 자체는
-         제거했음. 하지만 이미 저장된 문서에는 그 흔적이 남아있으므로,
-         우리가 직접 붙인 표식(data-display-baked)을 찾아 지워서 원상 복구.
-       ========================================================================== */
+    /* [ v1.24에서 잘못 저장된 잔재 정리 ] */
     const cleanupLegacyDisplayBake = () => {
         document.querySelectorAll('[data-display-baked]').forEach(p => {
             p.style.removeProperty('display');
@@ -1248,9 +1128,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 아바타(핸드아웃 대표 이미지) 자리에 "미리보기 아이콘" 라벨 표시 ]
-       ========================================================================== */
+    /* [ 아바타(핸드아웃 대표 이미지) 자리에 "미리보기 아이콘" 라벨 표시 ] */
     const forceInjectLabelDOM = () => {
         document.querySelectorAll('.avatar.dropbox').forEach(target => {
             if (target.parentNode && target.parentNode.querySelector('.r20-real-preview-label')) return;
@@ -1263,9 +1141,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 템플릿 저장/관리 - localStorage 데이터 입출력 ]
-       ========================================================================== */
+    /* [ 템플릿 저장/관리 - localStorage 데이터 입출력 ] */
     const getTemplates = () => {
         try {
             return JSON.parse(localStorage.getItem('r20_custom_templates_v2') || '[]');
@@ -1278,9 +1154,7 @@ window.r20CustomEditorResetFonts = function() {
         localStorage.setItem('r20_custom_templates_v2', JSON.stringify(templates));
     };
 
-    /* ==========================================================================
-       [ 템플릿 저장 팝업 UI ]
-       ========================================================================== */
+    /* [ 템플릿 저장 팝업 UI ] */
 
     const openTemplateSavePopover = (editor, anchorBtn) => {
         document.getElementById('r20-tm-save-popover')?.remove();
@@ -1344,9 +1218,7 @@ window.r20CustomEditorResetFonts = function() {
         nameInput.focus();
     };
 
-    /* ==========================================================================
-       [ 템플릿 관리 / 불러오기 모달 UI ]
-       ========================================================================== */
+    /* [ 템플릿 관리 / 불러오기 모달 UI ] */
 
     const openTemplateManagerModal = (editor, anchorBtn) => {
         let modal = document.getElementById('r20-template-manager-modal');
@@ -1480,9 +1352,7 @@ window.r20CustomEditorResetFonts = function() {
         renderList();
     };
 
-    /* ==========================================================================
-       [ 툴바 버튼 삽입 - 템플릿 저장/불러오기, 표 칸 합치기/나누기 ]
-       ========================================================================== */
+    /* [ 툴바 버튼 삽입 - 템플릿 저장/불러오기, 표 칸 합치기/나누기 ] */
     const injectTemplateButtons = () => {
         const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
 
@@ -1588,9 +1458,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 이미지 삽입 공통 유틸 ]
-       ========================================================================== */
+    /* [ 이미지 삽입 공통 유틸 ] */
 
     const getRangeFromPoint = (x, y) => {
         if (document.caretRangeFromPoint) {
@@ -1632,9 +1500,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 롤20 "아트 라이브러리" 항목을 드래그해서 편집창에 이미지 삽입 ]
-       ========================================================================== */
+    /* [ 롤20 "아트 라이브러리" 항목을 드래그해서 편집창에 이미지 삽입 ] */
 
     const extractLibraryDragUrl = (dragEl) => {
         if (!dragEl) return '';
@@ -1729,9 +1595,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 로컬 파일 첨부 & 이미지 첨부 팝업 UI ]
-       ========================================================================== */
+    /* [ 로컬 파일 첨부 & 이미지 첨부 팝업 UI ] */
     const readFileAsImage = (file, onDone) => {
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
@@ -1860,9 +1724,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 컴퓨터/브라우저에서 표준 드래그앤드롭으로 이미지 삽입 ]
-       ========================================================================== */
+    /* [ 컴퓨터/브라우저에서 표준 드래그앤드롭으로 이미지 삽입 ] */
 
     const handleEditorDragOver = (e) => {
         if (e.target.closest && e.target.closest('.note-editable')) {
@@ -1910,9 +1772,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 툴바에 폰트 선택 드롭다운 삽입 ]
-       ========================================================================== */
+    /* [ 툴바에 폰트 선택 드롭다운 삽입 ] */
     const refreshFontUI = () => {
         document.querySelectorAll('.custom-font-dropdown-wrapper').forEach(w => w.remove());
         injectFontDropdown();
@@ -1983,10 +1843,6 @@ window.r20CustomEditorResetFonts = function() {
         };
         renderFontList();
 
-        // 구글 폰트 사이트에서 "복사" 버튼으로 얻은 코드를 형식 상관없이
-        // (@import, <link>, URL만 등) 그대로 붙여넣기만 하면, 이름/font-family/
-        // URL을 전부 자동으로 뽑아서 곧바로 목록에 추가한다. 별도로 칸을
-        // 채우거나 추가 버튼을 누를 필요가 없다.
         const pasteInputEl = pop.querySelector('.r20-font-paste-input');
         const pasteMsgEl = pop.querySelector('.r20-font-paste-msg');
         pasteInputEl.addEventListener('input', () => {
@@ -2117,8 +1973,7 @@ window.r20CustomEditorResetFonts = function() {
             `;
 
             const selectEl = wrapper.querySelector('.custom-font-select');
-            // select가 포커스를 가져가면서 에디터의 선택 영역이 사라지기 전에
-            // 먼저 저장해둔다.
+
             selectEl.addEventListener('mousedown', () => saveSelection(), true);
             selectEl.addEventListener('pointerdown', () => saveSelection(), true);
             selectEl.addEventListener('change', (e) => {
@@ -2147,9 +2002,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 글자색/배경색 팝업에 커스텀 옵션 추가 ]
-       ========================================================================== */
+    /* [ 글자색/배경색 팝업에 커스텀 옵션 추가 ] */
     const enhanceColorPalette = () => {
         const colorPopups = document.querySelectorAll('.note-color .dropdown-menu, .tox-swatches-menu, .note-holder .dropdown-menu, div.dropdown-menu.note-holder-menu');
 
@@ -2224,9 +2077,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 팝업/드롭다운 위치 보정 - 화면·다이얼로그 밖으로 잘리지 않게 ]
-       ========================================================================== */
+    /* [ 팝업/드롭다운 위치 보정 - 화면·다이얼로그 밖으로 잘리지 않게 ] */
 
     const positionFixedDropdown = (menu, toggleBtn) => {
         if (!menu || !toggleBtn) return;
@@ -2276,9 +2127,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 표 삽입 크기 선택 팝업에 너비/정렬 옵션 추가 ]
-       ========================================================================== */
+    /* [ 표 삽입 크기 선택 팝업에 너비/정렬 옵션 추가 ] */
     const enhanceTableMenu = () => {
         const tablePopups = document.querySelectorAll([
             '.note-table .dropdown-menu',
@@ -2356,9 +2205,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ]
-       ========================================================================== */
+    /* [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ] */
     const selectedHandoutIds = new Set();
     const JOURNAL_ITEM_SELECTOR = 'li.journalitem[data-itemid], li.nj-item[data-itemid]';
     const JOURNAL_NAME_SELECTOR = '.namecontainer, .nj-name';
@@ -2380,10 +2227,7 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     const syncJournalSelectionStyles = () => {
-        // 선택된 게 하나도 없으면 지울 클래스도 없다(클래스는 항상 선택 변경
-        // 시점에 직접 sync를 호출해 정리하므로, 새로 렌더링된 노드에 우리
-        // 클래스가 남아있을 일도 없다). 그래서 안전하게 통째로 건너뛸 수
-        // 있다 - 큰 캠페인에서 저널 항목이 많을수록 이 전체 스캔이 비쌌음.
+
         if (selectedHandoutIds.size === 0) return;
         document.querySelectorAll(JOURNAL_ITEM_SELECTOR).forEach(item => {
             const nameEl = item.querySelector(JOURNAL_NAME_SELECTOR);
@@ -2480,22 +2324,13 @@ window.r20CustomEditorResetFonts = function() {
         deleteItem.textContent = `선택한 ${selectedHandoutIds.size}개 일괄 삭제`;
     };
 
-    /* ==========================================================================
-       [ 라이브러리 이미지 다중 선택 & 삭제 ]
-       - 저널/캐릭터 다중 선택 삭제와 동일한 패턴(Ctrl+클릭 선택, 우클릭 메뉴에
-         일괄 삭제 항목 추가)을 라이브러리(#imagedialog) 이미지 목록에도 적용한다.
-       - 라이브러리 이미지는 Campaign의 Backbone 콜렉션으로 관리되지 않는 계정
-         단위 자산이라 .destroy() 같은 API가 없다. 대신 Roll20이 실제 "삭제"
-         클릭 시 서버로 보내는 요청을 그대로 재현한다.
-         (POST /image_library/permdelete, payload: {ids: {imageids: [...]}} - 개발자
-         도구 Network 탭에서 실측 확인함)
-       ========================================================================== */
+    /* [ 라이브러리 이미지 다중 선택 & 삭제 ] */
     const selectedImageIds = new Set();
     const LIBRARY_ITEM_SELECTOR = 'li[data-imageid]';
     const LIBRARY_NAME_SELECTOR = '.namecontainer';
 
     const syncLibrarySelectionStyles = () => {
-        // syncJournalSelectionStyles와 동일한 이유로 선택이 없으면 건너뛴다.
+
         if (selectedImageIds.size === 0) return;
         document.querySelectorAll(LIBRARY_ITEM_SELECTOR).forEach(item => {
             const nameEl = item.querySelector(LIBRARY_NAME_SELECTOR);
@@ -2609,9 +2444,7 @@ window.r20CustomEditorResetFonts = function() {
         deleteItem.textContent = `선택한 ${selectedImageIds.size}개 이미지 일괄 삭제`;
     };
 
-    /* ==========================================================================
-       [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ]
-       ========================================================================== */
+    /* [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ] */
     document.addEventListener('selectionchange', () => {
         const selection = window.getSelection();
         if (!selection || !selection.rangeCount) return;
@@ -2620,7 +2453,6 @@ window.r20CustomEditorResetFonts = function() {
         const editor = getEditorFromNode(range.commonAncestorContainer);
         if (!editor) return;
 
-        // 실제 핸드아웃 편집 영역에서 발생한 선택만 저장
         saveSelection();
     });
 
@@ -2810,38 +2642,16 @@ window.r20CustomEditorResetFonts = function() {
             return false;
         }
 
-        // 폰트 서버 동기화가 진행 중일 때는 runEnhancer를 돌리지 않는다.
-        // (동기화 과정 자체가 탭 전환용 .click()을 발생시키는데, 그 클릭이
-        // 이 리스너를 다시 타면서 runEnhancer가 에디터를 재스캔/재주입하고,
-        // 그 과정에서 포커스가 핸드아웃 편집창으로 되돌아가 채팅 전송이
-        // 씹히는 문제가 있었다.)
         if (r20FontSyncInFlight.size === 0) {
             setTimeout(runEnhancer, 30);
         }
     }, true);
 
-    // 폴백용 주기 스캔. 클릭/DOM변화 트리거로 대부분 커버되지만, 그걸로
-    // 안 잡히는 경우를 위한 안전망이라 반응성을 크게 해치지 않는 선에서
-    // 간격을 늘려(0.5초 → 1초) 상시 부하를 줄인다.
     setInterval(() => {
-        // 아래 click 리스너와 동일한 이유로, 동기화 중에는 건너뛴다.
+
         if (r20FontSyncInFlight.size === 0) runEnhancer();
     }, 1000);
 
-    // Roll20 페이지 전체(채팅 로그, 토큰 이동 등)의 DOM 변화를 감시하다 보니
-    // 활발한 세션에서는 변화가 아주 잦다. 예전엔 변화가 있을 때마다 즉시
-    // (디바운스 없이) lastKnownEditorContent를 훑었는데, 그게 계속 쌓이는
-    // 부하의 원인 중 하나였다. runEnhancer 예약과 같은 디바운스로 묶어서
-    // 변화가 잦아들었을 때 한 번만 처리하도록 합쳤다(sync 트리거가 살짝
-    // 늦게 잡히는 건 문제 없음 - 시간에 민감한 동작이 아님).
-    // 채팅 로그(#textchat), 맵 보드 전체(#editor-wrapper - 캔버스, 토큰 이름표/
-    // 체력바 오버레이(#vm-tabletop-ui-layer) 등을 다 포함하는 컨테이너. 특히
-    // 토큰 오버레이는 Vue가 토큰 위치/체력바를 실시간으로 반영하는 곳이라
-    // 전투 중처럼 토큰이 자주 움직일 때 채팅만큼이나 변화가 잦음)처럼 우리
-    // UI랑 무관한데 변화가 아주 잦은 영역은 감시에서 사실상 제외한다(네이티브
-    // MutationObserver는 "감시 대상 안에서 특정 하위 트리만 빼고 관찰"하는
-    // 기능이 없어서, 콜백 안에서 변화가 일어난 곳이 제외 대상 안인지 걸러내는
-    // 방식으로 흉내낸다).
     const R20_MUTATION_WATCH_EXCLUDE_SELECTOR = '#textchat, #editor-wrapper';
 
     let mutationDebounceTimer = null;
@@ -2855,9 +2665,7 @@ window.r20CustomEditorResetFonts = function() {
         if (r20FontSyncInFlight.size > 0) return;
 
         mutationDebounceTimer = setTimeout(() => {
-            // 편집창이 실제로 닫혀서 DOM에서 사라진 에디터가 있으면, 마지막으로
-            // 캐시해둔 내용을 폰트 서버 동기화로 흘려보낸다(사라진 걸 확인하는
-            // 건 가벼운 isConnected 체크뿐이라 v1.21의 blur 렉 문제와는 다름).
+
             lastKnownEditorContent.forEach((entry, editorEl) => {
                 if (!editorEl.isConnected) {
                     lastKnownEditorContent.delete(editorEl);
