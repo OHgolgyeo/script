@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.37
+// @version      1.39
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.37');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.39');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -284,8 +284,24 @@ window.r20CustomEditorResetFonts = function() {
          나눠서 순서대로 전송한다. ]
        ========================================================================== */
     const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
-    const R20_FONT_SYNC_CHUNK_SIZE = 1200;
+    // 메시지 총 길이 자체는 문제가 아님(평소 1000자 안팎 로그도 잘 보내짐).
+    // 문제는 "공백 없이 이어진 긴 단어"였음(실측: 500자 안팎 단일 토큰은
+    // 전송이 씹히고, 100자 안팎은 정상 전송됨 — 아마 자동완성/맞춤법 관련
+    // 실시간 파싱이 긴 토큰에서 막히는 것으로 보임). 그래서 청크를 잘게
+    // 쪼개는 대신, 큰 청크를 유지하되 base64 안에 일정 간격으로 공백을
+    // 끼워넣어 "긴 단어"가 생기지 않게 한다(서버 쪽에서 공백만 제거하고
+    // 디코딩하면 되므로 내용에는 영향 없음).
+    const R20_FONT_SYNC_CHUNK_SIZE = 800;
+    const R20_FONT_SYNC_WORD_BREAK_INTERVAL = 40;
     const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
+
+    const insertWordBreaks = (str, interval) => {
+        const parts = [];
+        for (let i = 0; i < str.length; i += interval) {
+            parts.push(str.slice(i, i + interval));
+        }
+        return parts.join(' ');
+    };
 
     // 저장된 콘텐츠에 실제로 살아남는 건 <style> 태그가 아니라 font-family
     // "값"뿐이지만, 브라우저가 핸드아웃을 열 때마다 저장된 HTML을 한 번은
@@ -407,9 +423,8 @@ window.r20CustomEditorResetFonts = function() {
             console.log(`[R20-Custom-Editor] 폰트 동기화 시작: ${handoutId}/${field}, 총 ${totalChunks}개 조각`);
             for (let i = 0; i < totalChunks; i++) {
                 const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
-                const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunk}`;
-                console.log(`[R20-Custom-Editor] 전송할 전체 명령어 (${i + 1}/${totalChunks}, 복사해서 직접 채팅창에 붙여넣기 테스트용):`);
-                console.log(command);
+                const chunkWithBreaks = insertWordBreaks(chunk, R20_FONT_SYNC_WORD_BREAK_INTERVAL);
+                const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunkWithBreaks}`;
                 const sent = await sendR20ChatMessage(command);
                 console.log(`[R20-Custom-Editor] 조각 ${i + 1}/${totalChunks} 전송 시도 결과:`, sent);
                 if (!sent) {
