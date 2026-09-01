@@ -1,96 +1,59 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.40
+// @version      1.0
 // @author       오골계 (https://x.com/5golgyeo)
-// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
+// @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 하이퍼링크 추가·삭제, 글자 크기 지정 및 목록 설정창을 통한 크기 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제) [폰트(글꼴) 지정 기능은 Roll20 저장 시 서버가 걸러내 저장 후 사라지는 문제가 있어 이 버전에는 포함하지 않았습니다. 글자 크기는 서버가 걸러내지 않아 모두에게 그대로 적용되므로 이 버전에도 포함되어 있습니다. 폰트(글꼴) 지정이 가능한 프로 버전이 별도로 있습니다.]
 // @match        https://app.roll20.net/editor/*
 // @grant        none
 // @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
 // @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
 // ==/UserScript==
 
-/* ==========================================================================
-   [ 폰트 설정 영역 ]
-   - 아래 DEFAULT_* 배열은 "최초 1회" 기본값일 뿐입니다.
-   - 실제로 사용되는 폰트/크기 목록은 브라우저의 localStorage에 저장되며,
-     스크립트를 업데이트해도(파일 자체가 통째로 교체되어도) 그 값은 지워지지 않습니다.
-   - 목록 추가/삭제는 툴바의 폰트 드롭다운 옆 ⚙ 버튼을 눌러 뜨는 설정창에서
-     할 수 있습니다(저장하면 바로 적용, 새로고침 불필요).
-   - 콘솔(F12)로도 직접 다룰 수 있습니다(고급 사용자용, 한 번에 여러 개 넣을 때 편리):
-
-       r20CustomEditorSetFonts([
-           { name: '기본 폰트', url: '', family: 'inherit' },
-           { name: '내 폰트', url: '웹폰트 css 주소(없으면 빈 문자열)', family: "'폰트이름', sans-serif" }
-       ]);
-   ========================================================================== */
-const DEFAULT_CUSTOM_FONTS = [
-    { name: '기본 폰트', url: '', family: 'inherit' },
-    { name: '나눔고딕', url: 'https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap', family: "'Nanum Gothic', sans-serif" },
-    { name: '나눔명조', url: 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap', family: "'Nanum Myeongjo', serif" },
-    { name: 'Noto Sans KR', url: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap', family: "'Noto Sans KR', sans-serif" },
-    { name: 'Gothic A1', url: 'https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700&display=swap', family: "'Gothic A1', sans-serif" }
-];
-
-const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
-
-const R20_FONTS_STORAGE_KEY = 'r20CustomEditor_customFonts';
-const R20_FONT_SIZES_STORAGE_KEY = 'r20CustomEditor_customFontSizes';
-
-function r20LoadFromStorage(key, defaults) {
-    try {
-        const raw = localStorage.getItem(key);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        }
-    } catch (e) {
-        console.warn('[R20-Custom-Editor] 저장된 설정을 불러오지 못해 기본값을 사용합니다.', e);
-    }
-    try {
-        localStorage.setItem(key, JSON.stringify(defaults));
-    } catch (e) {
-        console.warn('[R20-Custom-Editor] 설정을 저장하지 못했습니다.', e);
-    }
-    return defaults;
-}
-
-let CUSTOM_FONTS = r20LoadFromStorage(R20_FONTS_STORAGE_KEY, DEFAULT_CUSTOM_FONTS);
-let CUSTOM_FONT_SIZES = r20LoadFromStorage(R20_FONT_SIZES_STORAGE_KEY, DEFAULT_CUSTOM_FONT_SIZES);
-
-window.r20CustomEditorSetFonts = function(fonts) {
-    if (!Array.isArray(fonts) || fonts.length === 0) {
-        console.error('[R20-Custom-Editor] fonts는 비어있지 않은 배열이어야 합니다.');
-        return;
-    }
-    localStorage.setItem(R20_FONTS_STORAGE_KEY, JSON.stringify(fonts));
-    console.log('[R20-Custom-Editor] 폰트 목록이 저장되었습니다. 페이지를 새로고침하세요.');
-};
-
-window.r20CustomEditorSetFontSizes = function(sizes) {
-    if (!Array.isArray(sizes) || sizes.length === 0) {
-        console.error('[R20-Custom-Editor] sizes는 비어있지 않은 배열이어야 합니다.');
-        return;
-    }
-    localStorage.setItem(R20_FONT_SIZES_STORAGE_KEY, JSON.stringify(sizes));
-    console.log('[R20-Custom-Editor] 폰트 크기 목록이 저장되었습니다. 페이지를 새로고침하세요.');
-};
-
-window.r20CustomEditorResetFonts = function() {
-    localStorage.removeItem(R20_FONTS_STORAGE_KEY);
-    localStorage.removeItem(R20_FONT_SIZES_STORAGE_KEY);
-    console.log('[R20-Custom-Editor] 폰트 설정이 기본값으로 초기화되었습니다. 페이지를 새로고침하세요.');
-};
-
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.40');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 2.3 (Free)');
 
-    if (!document.getElementById('r20-custom-style-v30')) {
-        const style = document.createElement('style');
-        style.id = 'r20-custom-style-v30';
-        style.innerHTML = `
+    /* [ 글자 크기 설정 영역 ] */
+    const DEFAULT_CUSTOM_FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72];
+    const R20_FONT_SIZES_STORAGE_KEY = 'r20CustomEditor_customFontSizes';
+
+    const r20LoadFromStorage = (key, defaults) => {
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) {
+            console.warn('[R20-Custom-Editor] 저장된 설정을 불러오지 못해 기본값을 사용합니다.', e);
+        }
+        try {
+            localStorage.setItem(key, JSON.stringify(defaults));
+        } catch (e) {
+            console.warn('[R20-Custom-Editor] 설정을 저장하지 못했습니다.', e);
+        }
+        return defaults;
+    };
+
+    let CUSTOM_FONT_SIZES = r20LoadFromStorage(R20_FONT_SIZES_STORAGE_KEY, DEFAULT_CUSTOM_FONT_SIZES);
+
+    window.r20CustomEditorSetFontSizes = function(sizes) {
+        if (!Array.isArray(sizes) || sizes.length === 0) {
+            console.error('[R20-Custom-Editor] sizes는 비어있지 않은 배열이어야 합니다.');
+            return;
+        }
+        localStorage.setItem(R20_FONT_SIZES_STORAGE_KEY, JSON.stringify(sizes));
+        console.log('[R20-Custom-Editor] 글자 크기 목록이 저장되었습니다. 페이지를 새로고침하세요.');
+    };
+
+    window.r20CustomEditorResetFontSizes = function() {
+        localStorage.removeItem(R20_FONT_SIZES_STORAGE_KEY);
+        console.log('[R20-Custom-Editor] 글자 크기 설정이 기본값으로 초기화되었습니다. 페이지를 새로고침하세요.');
+    };
+
+    const R20_HANDOUT_AVATAR_HIDE_CSS = `
             .handoutviewer .avatar,
             .handoutviewer img.avatar {
                 display: none !important;
@@ -99,11 +62,13 @@ window.r20CustomEditorResetFonts = function() {
                 margin: 0 !important;
                 padding: 0 !important;
                 overflow: hidden !important;
-            }
+            }`;
 
-            .r20-custom-lightbox-img {
-                cursor: pointer !important;
-            }
+    if (!document.getElementById('r20-custom-style-v30')) {
+        const style = document.createElement('style');
+        style.id = 'r20-custom-style-v30';
+        style.innerHTML = `
+            ${R20_HANDOUT_AVATAR_HIDE_CSS}
 
             .note-editable table {
                 table-layout: fixed !important;
@@ -111,6 +76,9 @@ window.r20CustomEditorResetFonts = function() {
             .note-editable td, .note-editable th {
                 position: relative;
                 word-break: break-all;
+            }
+            .r20-table-cell-selected {
+                box-shadow: inset 0 0 0 999px rgba(51, 122, 255, 0.28) !important;
             }
             .note-editable p,
             .handoutviewer p {
@@ -134,13 +102,58 @@ window.r20CustomEditorResetFonts = function() {
                 width: 100% !important;
                 clear: both !important;
             }
+
+            .dropdown-menu .note-palette {
+                display: inline-block !important;
+                vertical-align: top !important;
+                width: 200px !important;
+                box-sizing: border-box !important;
+            }
+
+            .dropdown-menu .note-palette .note-color-reset {
+                display: block !important;
+                width: calc(100% - 20px) !important;
+                max-width: calc(100% - 20px) !important;
+                box-sizing: border-box !important;
+                white-space: normal !important;
+                font-size: 11px !important;
+                line-height: 1.2 !important;
+                padding: 1px 2px !important;
+                text-align: center !important;
+                margin: 0 auto !important;
+            }
+
+            .custom-color-picker-wrapper {
+                max-width: 400px !important;
+                box-sizing: border-box !important;
+            }
+
+            .custom-color-picker-wrapper .ccpw-control {
+                height: 24px !important;
+                min-height: 24px !important;
+                max-height: 24px !important;
+                box-sizing: border-box !important;
+                font-size: 11px !important;
+                margin: 0 !important;
+            }
+            .custom-color-picker-wrapper .ccpw-label {
+                display: inline-flex !important;
+                align-items: flex-end !important;
+                height: 24px !important;
+                min-height: 24px !important;
+                max-height: 24px !important;
+                box-sizing: border-box !important;
+                font-size: 11px !important;
+                color: #333333 !important;
+                white-space: nowrap !important;
+                margin: 0 !important;
+                padding-bottom: 2px !important;
+            }
         `;
         document.head.appendChild(style);
     }
 
-    /* ==========================================================================
-       [ 공통 유틸 - 선택영역(커서) 저장/복원 ]
-       ========================================================================== */
+    /* [ 공통 유틸 - 선택영역(커서) 저장/복원 ] */
     let savedRange = null;
     let savedEditor = null;
 
@@ -149,6 +162,11 @@ window.r20CustomEditorResetFonts = function() {
         const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
         if (!element || !element.closest) return null;
         return element.closest('.note-editable, .tox-edit-area') || null;
+    };
+
+    const notifyEditorContentChanged = (editor) => {
+        if (!editor) return;
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
     };
 
     const saveSelection = () => {
@@ -167,9 +185,6 @@ window.r20CustomEditorResetFonts = function() {
         const selection = window.getSelection();
         if (!selection) return false;
 
-        // 저장된 선택 영역이 없거나 더 이상 유효하지 않으면, 지금 살아있는 선택이
-        // 에디터 안에 있는지 확인해서 그거라도 사용한다(기존 동작과의 호환성 유지 -
-        // 색상/크기 등 다른 툴바 컨트롤은 별도의 mousedown 저장 없이도 동작해왔음).
         if (!savedRange || (savedEditor && !savedEditor.isConnected)) {
             savedRange = null;
             savedEditor = null;
@@ -187,9 +202,21 @@ window.r20CustomEditorResetFonts = function() {
         return true;
     };
 
-    /* ==========================================================================
-       [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ]
-       ========================================================================== */
+    /* [ 공통 유틸 - 팝업 바깥 클릭하면 닫기 ] */
+    const attachOutsideClickClose = (el, anchorBtn) => {
+        const closeFn = () => {
+            el.remove();
+            document.removeEventListener('click', handler, true);
+        };
+        const handler = (ev) => {
+            if (!el.contains(ev.target) && ev.target !== anchorBtn) closeFn();
+        };
+        el._r20CloseOnOutsideClick = handler;
+        setTimeout(() => document.addEventListener('click', handler, true), 0);
+        return closeFn;
+    };
+
+    /* [ 공통 유틸 - 커스텀 팝업 "한번 더 누르면 닫힘" 토글 ] */
     const toggleCustomPopover = (popoverId, openFn) => {
         const existing = document.getElementById(popoverId);
         if (existing) {
@@ -202,9 +229,7 @@ window.r20CustomEditorResetFonts = function() {
         openFn();
     };
 
-    /* ==========================================================================
-       [ 가름줄(<hr>) 선택 상태 추적 ]
-       ========================================================================== */
+    /* [ 가름줄(<hr>) 선택 상태 추적 ] */
     let selectedHrEl = null;
 
     document.addEventListener('click', (e) => {
@@ -222,76 +247,20 @@ window.r20CustomEditorResetFonts = function() {
         }
     }, true);
 
-    /* ==========================================================================
-       [ 웹폰트 로드 - 목록에 등록된 웹폰트 파일/CSS를 불러와 브라우저가 렌더링할
-         수 있게 한다 ]
-       ========================================================================== */
-    /* ==========================================================================
-       [ 구글 폰트 임베드 코드 자동 인식 ]
-       - fonts.google.com에서 제공하는 <link>/@import 코드를 그대로 붙여넣으면
-         font-family 이름과 CSS URL을 자동으로 뽑아준다.
-       ========================================================================== */
-    const parseGoogleFontsCode = (text) => {
-        if (!text) return null;
-
-        // css? / css2? 둘 다 대응 (@import, <link href>, 그냥 URL 텍스트 전부 매칭)
-        const urlMatch = text.match(/https:\/\/fonts\.googleapis\.com\/css2?\?[^\s'")<>]+/);
-        if (!urlMatch) return null;
-        const url = urlMatch[0];
-
-        const familyMatch = url.match(/family=([^&]+)/);
-        if (!familyMatch) return null;
-
-        let familyRaw = decodeURIComponent(familyMatch[1]).split('|')[0];
-        familyRaw = familyRaw.split(':')[0]; // :wght@... 굵기 지정 제거
-        const fontName = familyRaw.replace(/\+/g, ' ').trim();
-        if (!fontName) return null;
-
-        return {
-            name: fontName,
-            family: `'${fontName}', sans-serif`,
-            url
-        };
-    };
-
-    const loadWebFonts = () => {
-        CUSTOM_FONTS.forEach(font => {
-            if (font.url && !document.querySelector(`link[href="${font.url}"], style[data-font="${font.name}"]`)) {
-                if (font.url.endsWith('.woff') || font.url.endsWith('.woff2') || font.url.endsWith('.ttf')) {
-                    const style = document.createElement('style');
-                    style.dataset.font = font.name;
-                    style.innerHTML = `@font-face { font-family: '${font.family}'; src: url('${font.url}') format('woff'); font-weight: normal; font-style: normal; }`;
-                    document.head.appendChild(style);
-                } else {
-                    const link = document.createElement('link');
-                    link.rel = 'stylesheet';
-                    link.href = font.url;
-                    document.head.appendChild(link);
-                }
-            }
-        });
-    };
-
-    /* ==========================================================================
-       [ 폰트 서버 동기화 - Roll20 브라우저 저장이 font-family/<style> 등을
-         걸러내는 문제를 우회하기 위해, 폰트가 적용된 핸드아웃 내용(+구글 폰트
-         @import 블록)을 채팅을 통해 별도의 Roll20 API 스크립트("R20FontSync")로
-         전달한다. API 스크립트는 handout.set()으로 직접 저장하므로 브라우저
-         저장 시의 필터링을 거치지 않는다.
+    /* [ 핸드아웃 뷰어 스타일 서버 동기화 - Roll20 브라우저 저장이 <style> 등을
+         걸러내는 문제를 우회하기 위해, 스크립트가 없는 다른 사람에게도(예:
+         아바타 숨기기) 그대로 보이도록 별도의 Roll20 API 스크립트
+         ("R20FontSync")로 채팅을 통해 전달한다. API 스크립트는 handout.set()으로
+         직접 저장하므로 브라우저 저장 시의 필터링을 거치지 않는다.
          (동봉된 "R20FontSync.js"를 캠페인 설정 > API Scripts에 설치해야 동작함.
          GM 권한으로 채팅을 보낼 수 있어야 하므로 GM만 동작함)
-         채팅 메시지 길이 제한을 피하기 위해 base64로 인코딩한 뒤 여러 조각으로
-         나눠서 순서대로 전송한다. ]
-       ========================================================================== */
+         base64로 인코딩해서 보낸다. Roll20 채팅에는 글자수 제한이 없다고
+         확인받았으므로 기본적으로 한 메시지에 다 넣어서 보내고, 혹시라도
+         비정상적으로 거대한 핸드아웃이 있을 경우를 대비한 안전장치로만
+         나눠 보내는 기능을 남겨둔다(사실상 거의 항상 1개 메시지로 끝난다). ] */
     const R20_CHAT_TEXTAREA_SELECTOR = 'textarea[title="Text Chat Input"]';
-    // 메시지 총 길이 자체는 문제가 아님(평소 1000자 안팎 로그도 잘 보내짐).
-    // 문제는 "공백 없이 이어진 긴 단어"였음(실측: 500자 안팎 단일 토큰은
-    // 전송이 씹히고, 100자 안팎은 정상 전송됨 — 아마 자동완성/맞춤법 관련
-    // 실시간 파싱이 긴 토큰에서 막히는 것으로 보임). 그래서 청크를 잘게
-    // 쪼개는 대신, 큰 청크를 유지하되 base64 안에 일정 간격으로 공백을
-    // 끼워넣어 "긴 단어"가 생기지 않게 한다(서버 쪽에서 공백만 제거하고
-    // 디코딩하면 되므로 내용에는 영향 없음).
-    const R20_FONT_SYNC_CHUNK_SIZE = 800;
+
+    const R20_FONT_SYNC_CHUNK_SIZE = 200000;
     const R20_FONT_SYNC_WORD_BREAK_INTERVAL = 40;
     const R20_FONT_SYNC_CHUNK_DELAY_MS = 350;
 
@@ -303,26 +272,10 @@ window.r20CustomEditorResetFonts = function() {
         return parts.join(' ');
     };
 
-    // 저장된 콘텐츠에 실제로 살아남는 건 <style> 태그가 아니라 font-family
-    // "값"뿐이지만, 브라우저가 핸드아웃을 열 때마다 저장된 HTML을 한 번은
-    // 그대로 파싱/실행하기 때문에 <style>@import ...>가 그 순간 폰트를
-    // 로드시켜준다(태그 자체가 나중에 사라져도 이미 로드된 폰트는 유지됨).
-    // 구글 폰트(fonts.googleapis.com)만 이 방식이 확인되었으므로 그것만 포함.
-    const buildFontImportStyleBlock = () => {
-        const urls = [...new Set(
-            CUSTOM_FONTS
-                .filter(f => f.url && f.url.indexOf('fonts.googleapis.com') !== -1)
-                .map(f => f.url)
-        )];
-        if (urls.length === 0) return '';
-        return '<style>' + urls.map(u => `@import url('${u}');`).join('') + '</style>';
+    const buildEmbeddedStyleBlock = () => {
+        return '<style>' + R20_HANDOUT_AVATAR_HIDE_CSS + '</style>';
     };
 
-    // Roll20 좌측 사이드바는 jQuery UI 탭(채팅/저널/...) 구조라서, 저널 탭이
-    // 활성화된 상태(핸드아웃 편집 중)에는 채팅 탭 내용이 화면에서 비활성 상태가
-    // 되어 그 안의 textarea를 건드려도 Roll20이 "진짜 입력"으로 받아주지 않는다.
-    // 그래서 채팅 탭으로 잠깐 전환 → 명령어 전송 → 원래 탭으로 복귀하는 방식을 쓴다.
-    const R20_JOURNAL_TAB_ID = 'journaltab';
     const R20_CHAT_TAB_ID = 'textchattab';
 
     const clickR20Tab = (tabId) => {
@@ -338,47 +291,22 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     const sendR20ChatMessage = (text) => new Promise((resolve) => {
-        const allTextareas = document.querySelectorAll(R20_CHAT_TEXTAREA_SELECTOR);
-        console.log(`[R20-Custom-Editor] 채팅창 후보 개수: ${allTextareas.length}`);
-        const textarea = allTextareas[0];
+        const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
         if (!textarea) { resolve(false); return; }
 
-        // execCommand('insertText', ...)는 "지금 포커스된 곳"에 작동하는
-        // 방식이라, 포커스 상태와 무관하게 textarea에 직접 값을 꽂아넣는
-        // 방식(네이티브 setter + input 이벤트)을 쓴다.
         const nativeValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
         nativeValueSetter.call(textarea, text);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.focus();
-        console.log('[R20-Custom-Editor] 값 주입 직후 → activeElement:', document.activeElement, ' textarea.value 길이:', textarea.value.length);
 
         setTimeout(() => {
-            // 그 사이 다른 로직(runEnhancer 등)이 포커스를 가져갔을 가능성에
-            // 대비해 Enter를 보내기 직전에 한 번 더 포커스를 확인/재요청한다.
-            console.log('[R20-Custom-Editor] Enter 전송 직전 → activeElement:', document.activeElement, ' textarea.value 길이:', textarea.value.length);
-            if (document.activeElement !== textarea) {
-                console.warn('[R20-Custom-Editor] 폰트 동기화: Enter 전송 직전 포커스가 채팅창이 아님 →', document.activeElement);
-                textarea.focus();
-                console.log('[R20-Custom-Editor] 재포커스 시도 후 → activeElement:', document.activeElement);
-            }
+            if (document.activeElement !== textarea) textarea.focus();
 
-            // textarea에 class="ui-autocomplete-input"이 붙어있다는 건 jQuery UI
-            // Autocomplete 위젯이 연결돼있다는 뜻. "!"로 시작하는 명령어를 넣으면
-            // Roll20의 API 명령어 자동완성 목록이 뜨는데, 그 목록이 열려있는 채로
-            // Enter를 보내면 위젯이 그 Enter를 가로채 "메시지 전송"이 아니라
-            // "자동완성 항목 선택"으로 처리해버려 입력값만 사라지고 실제 전송은
-            // 안 되는 문제가 있었다. Enter 보내기 직전에 강제로 닫아준다.
             try {
                 const jq = window.jQuery || window.$;
-                if (jq && jq.fn && jq.fn.autocomplete) {
-                    jq(textarea).autocomplete('close');
-                    console.log('[R20-Custom-Editor] jQuery UI 자동완성 팝업 닫기 시도함');
-                }
-            } catch (e) {
-                console.log('[R20-Custom-Editor] 자동완성 닫기 시도 중 오류(무시):', e.message);
-            }
-            // 혹시 위 방법이 안 통할 경우를 대비해 Escape도 한 번 보내둔다
-            // (jQuery UI Autocomplete는 기본적으로 Escape에 팝업을 닫도록 반응한다).
+                if (jq && jq.fn && jq.fn.autocomplete) jq(textarea).autocomplete('close');
+            } catch (e) {  }
+
             textarea.dispatchEvent(new KeyboardEvent('keydown', {
                 key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true
             }));
@@ -388,9 +316,6 @@ window.r20CustomEditorResetFonts = function() {
                     key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
                 }));
             });
-            setTimeout(() => {
-                console.log('[R20-Custom-Editor] Enter 전송 100ms 후 → textarea.value 길이:', textarea.value.length, '(0이면 전송된 것으로 보임, 그대로면 실패)');
-            }, 100);
             resolve(true);
         }, 50);
     });
@@ -399,51 +324,52 @@ window.r20CustomEditorResetFonts = function() {
 
     const r20FontSyncInFlight = new Set();
 
+    const r20LastSyncedAt = new Map();
+    const R20_FONT_SYNC_MIN_INTERVAL_MS = 4000;
+
     const syncFontStyledContentToServer = async (handoutId, field, html) => {
         if (!handoutId || !field) return;
         const syncKey = handoutId + ':' + field;
         if (r20FontSyncInFlight.has(syncKey)) return;
+
+        const now = Date.now();
+        const lastAt = r20LastSyncedAt.get(syncKey) || 0;
+        if (now - lastAt < R20_FONT_SYNC_MIN_INTERVAL_MS) return;
+        r20LastSyncedAt.set(syncKey, now);
+
         r20FontSyncInFlight.add(syncKey);
 
-        // 조각이 여러 개여도 탭 전환은 전체 전송 과정에서 딱 한 번만 한다
-        // (조각마다 탭을 왔다갔다 하면 타이밍이 꼬여서 일부가 유실될 수 있음).
-        const previousTabId = getActiveR20TabId();
-        const switchedTab = !!(previousTabId && previousTabId !== R20_CHAT_TAB_ID && clickR20Tab(R20_CHAT_TAB_ID));
-        console.log(`[R20-Custom-Editor] 탭 전환 정보 → 이전 탭: ${previousTabId}, 전환 시도함: ${switchedTab}`);
-        if (switchedTab) {
-            await new Promise(r => setTimeout(r, 120));
-            console.log('[R20-Custom-Editor] 전환 대기 후 실제 활성 탭:', getActiveR20TabId());
-        }
+        let previousTabId = null;
+        let switchedTab = false;
 
         try {
-            const fullHtml = buildFontImportStyleBlock() + html;
+            previousTabId = getActiveR20TabId();
+            switchedTab = !!(previousTabId && previousTabId !== R20_CHAT_TAB_ID && clickR20Tab(R20_CHAT_TAB_ID));
+            if (switchedTab) await new Promise(r => setTimeout(r, 120));
+
+            const fullHtml = buildEmbeddedStyleBlock() + html;
             const b64 = base64EncodeUtf8(fullHtml);
             const totalChunks = Math.max(1, Math.ceil(b64.length / R20_FONT_SYNC_CHUNK_SIZE));
 
-            console.log(`[R20-Custom-Editor] 폰트 동기화 시작: ${handoutId}/${field}, 총 ${totalChunks}개 조각`);
             for (let i = 0; i < totalChunks; i++) {
                 const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
                 const chunkWithBreaks = insertWordBreaks(chunk, R20_FONT_SYNC_WORD_BREAK_INTERVAL);
                 const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunkWithBreaks}`;
                 const sent = await sendR20ChatMessage(command);
-                console.log(`[R20-Custom-Editor] 조각 ${i + 1}/${totalChunks} 전송 시도 결과:`, sent);
                 if (!sent) {
                     console.warn('[R20-Custom-Editor] 채팅창을 찾지 못해 폰트 서버 동기화를 못 보냈습니다.');
                     break;
                 }
-                await new Promise(r => setTimeout(r, R20_FONT_SYNC_CHUNK_DELAY_MS));
+                if (i < totalChunks - 1) {
+                    await new Promise(r => setTimeout(r, R20_FONT_SYNC_CHUNK_DELAY_MS));
+                }
             }
-            console.log('[R20-Custom-Editor] 폰트 서버 동기화 완료: ' + handoutId + '/' + field);
         } finally {
             if (switchedTab) clickR20Tab(previousTabId);
             r20FontSyncInFlight.delete(syncKey);
         }
     };
 
-    // 편집 중인 각 에디터의 "마지막으로 확인된 내용"을 가볍게 캐시해뒀다가,
-    // 편집창이 실제로 닫히는 순간(DOM에서 사라지는 순간) 그 내용을 서버로
-    // 동기화한다. blur는 툴바 클릭 등에도 계속 발생해서 신뢰할 수 없기
-    // 때문에(v1.21 렉 문제 원인) 쓰지 않는다.
     const getHandoutSyncContext = (editor) => {
         const dialog = editor.closest('[data-handoutid]');
         const handoutId = dialog && dialog.getAttribute('data-handoutid');
@@ -452,7 +378,7 @@ window.r20CustomEditorResetFonts = function() {
         return { handoutId, field };
     };
 
-    const lastKnownEditorContent = new Map(); // editor element -> { handoutId, field, html }
+    const lastKnownEditorContent = new Map();
 
     document.addEventListener('input', (e) => {
         const editor = e.target.closest && e.target.closest('.note-editable');
@@ -462,9 +388,7 @@ window.r20CustomEditorResetFonts = function() {
         lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
     }, true);
 
-    /* ==========================================================================
-       [ 붙여넣기 시 서식 정리 ]
-       ========================================================================== */
+    /* [ 붙여넣기 시 서식 정리 ] */
     const handlePasteFormatting = (e) => {
         const activeEl = document.activeElement;
         if (!activeEl || !activeEl.closest('.note-editable, .tox-edit-area')) return;
@@ -555,19 +479,16 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 텍스트 스타일 적용 - 글자색/글자 배경색/폰트 공통 ]
-       ========================================================================== */
+    /* [ 텍스트 스타일 적용 - 글자색/글자 배경색/폰트 공통 ] */
     const toCssPropertyName = (styleProperty) =>
         styleProperty.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 
-    // 선택 영역을 span 하나로 통째로 감싸면(extractContents 방식) 여러 문단/표에
-    // 걸친 선택일 때 인라인 태그가 블록 요소(p, td 등)를 감싸는 잘못된 구조가 되어
-    // 레이아웃이 깨진다(<strong>이 표를 감쌀 때와 같은 문제). 그래서 블록 구조는
-    // 절대 건드리지 않고, 선택 영역과 겹치는 "텍스트 노드"만 찾아 그 안에서 선택된
-    // 부분만 잘라(splitText) 각각 별도의 span으로 감싼다. p/td/strong 등 기존 구조는
-    // 제자리에 그대로 남는다.
     const wrapSelectedTextRuns = (editor, range, cssProp, value) => {
+        const rangeStartContainer = range.startContainer;
+        const rangeStartOffset = range.startOffset;
+        const rangeEndContainer = range.endContainer;
+        const rangeEndOffset = range.endOffset;
+
         const textNodes = [];
         const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
@@ -579,17 +500,19 @@ window.r20CustomEditorResetFonts = function() {
         let n;
         while ((n = walker.nextNode())) textNodes.push(n);
 
-        const createdSpans = [];
-
-        // 뒤에서부터 처리해야 앞쪽 노드를 바꿀 때 range 위치가 흔들리지 않는다.
-        for (let i = textNodes.length - 1; i >= 0; i--) {
-            const textNode = textNodes[i];
-            if (!textNode.parentNode) continue;
-
-            let startOffset = textNode === range.startContainer ? range.startOffset : 0;
-            let endOffset = textNode === range.endContainer ? range.endOffset : textNode.nodeValue.length;
+        const runs = textNodes.map(textNode => {
+            let startOffset = textNode === rangeStartContainer ? rangeStartOffset : 0;
+            let endOffset = textNode === rangeEndContainer ? rangeEndOffset : textNode.nodeValue.length;
             startOffset = Math.max(0, Math.min(startOffset, textNode.nodeValue.length));
             endOffset = Math.max(0, Math.min(endOffset, textNode.nodeValue.length));
+            return { textNode, startOffset, endOffset };
+        });
+
+        const createdSpans = [];
+
+        for (let i = runs.length - 1; i >= 0; i--) {
+            const { textNode, startOffset, endOffset } = runs[i];
+            if (!textNode.parentNode) continue;
             if (startOffset >= endOffset) continue;
 
             let targetNode = textNode;
@@ -597,11 +520,7 @@ window.r20CustomEditorResetFonts = function() {
             if (startOffset > 0) targetNode = targetNode.splitText(startOffset);
 
             const span = document.createElement('span');
-            // font-family는 execCommand('insertHTML', ...)로 다시 삽입되는데,
-            // 그 과정에서 Roll20/Summernote 쪽이 style 속성을 재정리하면서
-            // "!important"를 제대로 못 알아보고 "important"를 폰트 이름처럼
-            // 따옴표로 감싸버리는 문제가 실측으로 확인됨. font-family는
-            // !important 없이 넣는다(insertHTML 경로라 굳이 필요하지도 않음).
+
             const priority = cssProp === 'font-family' ? '' : 'important';
             span.style.setProperty(cssProp, value, priority);
             targetNode.parentNode.insertBefore(span, targetNode);
@@ -612,14 +531,6 @@ window.r20CustomEditorResetFonts = function() {
         return createdSpans;
     };
 
-    // fontFamily는 DOM에 직접 꽂으면(insertBefore/appendChild) Roll20 저장 시
-    // 사라지는 것으로 확인됨(!important, <font face>, class 이름표 다 시도해도
-    // 마찬가지). 반면 붙여넣기(paste)처럼 execCommand('insertHTML')로 넣은 내용은
-    // 저장 후에도 그대로 유지되는 것을 실제 테스트(스크린샷)로 확인함 - 그래서
-    // fontFamily는 span을 만든 뒤 같은 자리에 insertHTML로 다시 삽입한다.
-    // (주의: 이 재삽입을 'blur' 이벤트에 걸면 안 됨 - 툴바 클릭만으로도 에디터에
-    // blur가 발생해서 매번 실행되며 렉/선택영역 꼬임을 일으킨다. 그래서 적용하는
-    // 바로 그 순간, 동기적으로 처리한다.)
     const applyTextStyle = (styleProperty, value) => {
         if (!restoreSelection()) return;
         const selection = window.getSelection();
@@ -630,11 +541,9 @@ window.r20CustomEditorResetFonts = function() {
         if (!editor || !editor.contains(range.commonAncestorContainer)) return;
 
         const cssProp = toCssPropertyName(styleProperty);
-        const useInsertHTML = styleProperty === 'fontFamily';
 
         if (selection.isCollapsed) {
-            // 커서만 있고 선택된 글자가 없는 상태(타이핑 전에 폰트부터 고르는 경우)는
-            // 실시간 입력 흐름을 방해하지 않도록 span을 직접 삽입한다.
+
             const span = document.createElement('span');
             span.style.setProperty(cssProp, value, cssProp === 'font-family' ? '' : 'important');
             span.textContent = '\u200B';
@@ -651,31 +560,10 @@ window.r20CustomEditorResetFonts = function() {
             return;
         }
 
-        const createdSpans = wrapSelectedTextRuns(editor, range, cssProp, value);
-
-        if (useInsertHTML) {
-            createdSpans.reverse().forEach(span => {
-                if (!span.isConnected) return;
-                const r = document.createRange();
-                r.selectNode(span);
-                selection.removeAllRanges();
-                selection.addRange(r);
-                document.execCommand('insertHTML', false, span.outerHTML);
-            });
-        }
+        wrapSelectedTextRuns(editor, range, cssProp, value);
 
         editor.focus();
         editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
-
-        if (useInsertHTML) {
-            const ctx = getHandoutSyncContext(editor);
-            if (ctx) {
-                lastKnownEditorContent.set(editor, { ...ctx, html: editor.innerHTML });
-                syncFontStyledContentToServer(ctx.handoutId, ctx.field, editor.innerHTML);
-            } else {
-                console.warn('[R20-Custom-Editor] 핸드아웃 ID를 찾지 못해 폰트 서버 동기화를 건너뜁니다.');
-            }
-        }
 
         const newSelection = window.getSelection();
         if (newSelection && newSelection.rangeCount) {
@@ -684,9 +572,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ]
-       ========================================================================== */
+    /* [ 표(테이블) 칸 격자 계산 & 드래그 다중 선택 감지 ] */
 
     const buildTableGrid = (table) => {
         const grid = [];
@@ -779,9 +665,42 @@ window.r20CustomEditorResetFonts = function() {
         return cells;
     };
 
-    /* ==========================================================================
-       [ 표 칸 합치기 / 나누기 ]
-       ========================================================================== */
+    let highlightedTableCells = new Set();
+
+    const clearTableCellHighlight = () => {
+        if (highlightedTableCells.size === 0) return;
+        highlightedTableCells.forEach(cell => cell.classList.remove('r20-table-cell-selected'));
+        highlightedTableCells.clear();
+    };
+
+    const updateTableCellHighlight = () => {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount || selection.isCollapsed) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const anchorEditor = getEditorFromNode(selection.anchorNode);
+        if (!anchorEditor) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const cells = getSelectedTableCells();
+        if (cells.length < 2) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const nextSet = new Set(cells);
+        highlightedTableCells.forEach(cell => {
+            if (!nextSet.has(cell)) cell.classList.remove('r20-table-cell-selected');
+        });
+        nextSet.forEach(cell => cell.classList.add('r20-table-cell-selected'));
+        highlightedTableCells = nextSet;
+    };
+
+    /* [ 표 칸 합치기 / 나누기 ] */
 
     const mergeSelectedTableCells = () => {
         const cells = getSelectedTableCells();
@@ -839,6 +758,20 @@ window.r20CustomEditorResetFonts = function() {
         orderedCells.forEach(cell => {
             if (cell !== topLeftCell) cell.remove();
         });
+
+        clearTableCellHighlight();
+
+        const editor = getEditorFromNode(table);
+        notifyEditorContentChanged(editor);
+
+        const newSelection = window.getSelection();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(topLeftCell);
+        newRange.collapse(false);
+        newSelection.removeAllRanges();
+        newSelection.addRange(newRange);
+        savedRange = newRange.cloneRange();
+        savedEditor = editor;
     };
 
     const splitSelectedTableCell = () => {
@@ -898,11 +831,11 @@ window.r20CustomEditorResetFonts = function() {
                 grid[r][c] = newCell;
             }
         }
+
+        notifyEditorContentChanged(getEditorFromNode(table));
     };
 
-    /* ==========================================================================
-       [ 표 칸 배경색 / 테두리, 가름줄 스타일 적용 ]
-       ========================================================================== */
+    /* [ 표 칸 배경색 / 테두리, 가름줄 스타일 적용 ] */
 
     const applyTableCellBackground = (color) => {
         restoreSelection();
@@ -913,6 +846,7 @@ window.r20CustomEditorResetFonts = function() {
             return;
         }
         cells.forEach(cell => { cell.style.backgroundColor = color; });
+        notifyEditorContentChanged(getEditorFromNode(cells[0]));
     };
 
     const applyTableCellBorder = (color, widthPx, style) => {
@@ -925,6 +859,7 @@ window.r20CustomEditorResetFonts = function() {
         }
         const w = Math.max(1, parseInt(widthPx, 10) || 1);
         cells.forEach(cell => { cell.style.border = `${w}px ${style} ${color}`; });
+        notifyEditorContentChanged(getEditorFromNode(cells[0]));
     };
 
     const applyHrStyle = (color, widthPx, style) => {
@@ -938,9 +873,7 @@ window.r20CustomEditorResetFonts = function() {
         selectedHrEl.style.height = '0';
     };
 
-    /* ==========================================================================
-       [ 가름줄(구분선) 삽입 팝업 UI ]
-       ========================================================================== */
+    /* [ 가름줄(구분선) 삽입 팝업 UI ] */
 
     const insertStyledHr = (editor, color, widthPx, style) => {
         editor.focus();
@@ -994,15 +927,7 @@ window.r20CustomEditorResetFonts = function() {
 
         document.body.appendChild(pop);
         pop.addEventListener('mousedown', (e) => e.stopPropagation());
-
-        const closeOnOutsideClick = (ev) => {
-            if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
-                pop.remove();
-                document.removeEventListener('click', closeOnOutsideClick, true);
-            }
-        };
-        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
-        setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
+        const closePop = attachOutsideClickClose(pop, anchorBtn);
 
         pop.querySelector('.r20-hr-insert-btn').addEventListener('click', (e) => {
             e.preventDefault();
@@ -1013,8 +938,7 @@ window.r20CustomEditorResetFonts = function() {
             const style = pop.querySelector('.r20-hr-style').value;
 
             insertStyledHr(editor, color, width, style);
-            pop.remove();
-            document.removeEventListener('click', closeOnOutsideClick, true);
+            closePop();
         });
     };
 
@@ -1058,9 +982,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 이미지 URL 정리 & 라이트박스(확대보기) ]
-       ========================================================================== */
+    /* [ 이미지 URL 정리 & 라이트박스(확대보기) ] */
     const cleanRoll20ImageUrl = (rawUrl) => {
         if (!rawUrl) return '';
         let clean = rawUrl.replace(/(\/thumb\.png|\/med\.png|\/max\.png)/g, '/original.png');
@@ -1087,9 +1009,7 @@ window.r20CustomEditorResetFonts = function() {
         document.body.appendChild(box);
     };
 
-    /* ==========================================================================
-       [ 표 크기 조절 - 열 너비 / 행 높이 드래그 ]
-       ========================================================================== */
+    /* [ 표 크기 조절 - 열 너비 / 행 높이 드래그 ] */
     const makeTablesResizable = () => {
         const tables = document.querySelectorAll('.note-editable table, .tox-edit-area table');
 
@@ -1172,9 +1092,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 ]
-       ========================================================================== */
+    /* [ 잘못 감싸진 인라인 태그(strong/b/em/i/u/font) 풀어주기 ] */
     const fixInvalidInlineWrapping = () => {
         const INLINE_SELECTOR = 'strong, b, em, i, u, font';
         const BLOCK_TAGS = ['DIV', 'TABLE', 'P', 'UL', 'OL', 'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
@@ -1215,7 +1133,6 @@ window.r20CustomEditorResetFonts = function() {
             }
         });
 
-        // 구조가 바뀐 표들은 컨테이너 너비가 달라졌을 수 있으니 정렬 판정을 다시 하도록 플래그 초기화
         if (changedAny) {
             document.querySelectorAll('.note-editable table, .tox-edit-area table, .handoutviewer table').forEach(t => {
                 delete t.dataset.alignNormalized;
@@ -1223,9 +1140,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 표 가운데 정렬 자동 보정 ]
-       ========================================================================== */
+    /* [ 표 가운데 정렬 자동 보정 ] */
     const normalizeTableAlignment = () => {
         const tables = document.querySelectorAll(
             '.note-editable table, .tox-edit-area table, .handoutviewer table'
@@ -1237,7 +1152,6 @@ window.r20CustomEditorResetFonts = function() {
             const hasMarginLeft = !!table.style.marginLeft;
             const hasMarginRight = !!table.style.marginRight;
 
-            // 이미 marginLeft/Right가 (auto든 0이든) 설정된 표는 의도된 정렬로 보고 건드리지 않음.
             if (hasMarginLeft || hasMarginRight) {
                 table.dataset.alignNormalized = 'true';
                 return;
@@ -1247,10 +1161,8 @@ window.r20CustomEditorResetFonts = function() {
             const containerWidth = container ? container.clientWidth : 0;
             const tableWidth = table.offsetWidth;
 
-            // 아직 화면에 그려지기 전(너비 측정 불가)이면 다음 스캔에서 다시 시도
             if (!containerWidth || !tableWidth) return;
 
-            // 표가 부모 영역보다 눈에 띄게 좁을 때만(=정렬이 실제로 의미 있을 때) 기본 가운데 정렬 적용
             if (tableWidth < containerWidth * 0.98) {
                 table.style.marginLeft = 'auto';
                 table.style.marginRight = 'auto';
@@ -1260,14 +1172,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ v1.24에서 잘못 저장된 잔재 정리 ]
-       - v1.24가 각 <p>에 data-display-baked + style="display:block"을 직접
-         저장 콘텐츠에 박아넣었다가, 옛 저장물에서 예기치 못한 렌더링(볼드처럼
-         보이는 현상)을 일으키는 게 확인되어 v1.25에서 해당 기능 자체는
-         제거했음. 하지만 이미 저장된 문서에는 그 흔적이 남아있으므로,
-         우리가 직접 붙인 표식(data-display-baked)을 찾아 지워서 원상 복구.
-       ========================================================================== */
+    /* [ v1.24에서 잘못 저장된 잔재 정리 ] */
     const cleanupLegacyDisplayBake = () => {
         document.querySelectorAll('[data-display-baked]').forEach(p => {
             p.style.removeProperty('display');
@@ -1278,24 +1183,40 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 아바타(핸드아웃 대표 이미지) 자리에 "미리보기 아이콘" 라벨 표시 ]
-       ========================================================================== */
+    /* [ 아바타(핸드아웃 대표 이미지) 자리에 "미리보기 아이콘" 라벨 표시 ] */
     const forceInjectLabelDOM = () => {
         document.querySelectorAll('.avatar.dropbox').forEach(target => {
-            if (target.parentNode && target.parentNode.querySelector('.r20-real-preview-label')) return;
+            if (!(target.parentNode && target.parentNode.querySelector('.r20-real-preview-label'))) {
+                const label = document.createElement('div');
+                label.className = 'r20-real-preview-label';
+                label.textContent = '미리보기 아이콘';
+                target.parentNode.insertBefore(label, target);
+            }
 
-            const label = document.createElement('div');
-            label.className = 'r20-real-preview-label';
-            label.textContent = '미리보기 아이콘';
-
-            target.parentNode.insertBefore(label, target);
+            checkAvatarChangedAndSync(target);
         });
     };
 
-    /* ==========================================================================
-       [ 템플릿 저장/관리 - localStorage 데이터 입출력 ]
-       ========================================================================== */
+    const r20AvatarLastBg = new WeakMap();
+    const checkAvatarChangedAndSync = (avatarEl) => {
+        const bg = getComputedStyle(avatarEl).backgroundImage;
+        const hadPrev = r20AvatarLastBg.has(avatarEl);
+        const prevBg = r20AvatarLastBg.get(avatarEl);
+        r20AvatarLastBg.set(avatarEl, bg);
+
+        if (!hadPrev || !bg || bg === 'none' || bg === prevBg) return;
+
+        const dialog = avatarEl.closest('[data-handoutid]');
+        const handoutId = dialog && dialog.getAttribute('data-handoutid');
+        if (!handoutId) return;
+
+        const notesEditor = Array.from(dialog.querySelectorAll('.note-editable')).find(el => !el.closest('.gmnotes'));
+        if (!notesEditor) return;
+
+        syncFontStyledContentToServer(handoutId, 'notes', notesEditor.innerHTML);
+    };
+
+    /* [ 템플릿 저장/관리 - localStorage 데이터 입출력 ] */
     const getTemplates = () => {
         try {
             return JSON.parse(localStorage.getItem('r20_custom_templates_v2') || '[]');
@@ -1308,9 +1229,7 @@ window.r20CustomEditorResetFonts = function() {
         localStorage.setItem('r20_custom_templates_v2', JSON.stringify(templates));
     };
 
-    /* ==========================================================================
-       [ 템플릿 저장 팝업 UI ]
-       ========================================================================== */
+    /* [ 템플릿 저장 팝업 UI ] */
 
     const openTemplateSavePopover = (editor, anchorBtn) => {
         document.getElementById('r20-tm-save-popover')?.remove();
@@ -1342,15 +1261,7 @@ window.r20CustomEditorResetFonts = function() {
 
         document.body.appendChild(pop);
         pop.addEventListener('mousedown', (e) => e.stopPropagation());
-
-        const closeOnOutsideClick = (ev) => {
-            if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
-                pop.remove();
-                document.removeEventListener('click', closeOnOutsideClick, true);
-            }
-        };
-        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
-        setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
+        const closePop = attachOutsideClickClose(pop, anchorBtn);
 
         const nameInput = pop.querySelector('.r20-tm-save-name');
         const doSave = () => {
@@ -1360,7 +1271,7 @@ window.r20CustomEditorResetFonts = function() {
             const templates = getTemplates();
             templates.push({ id: Date.now().toString(), name, html: content });
             saveTemplates(templates);
-            pop.remove();
+            closePop();
         };
 
         pop.querySelector('.r20-tm-save-btn').addEventListener('click', (e) => {
@@ -1374,9 +1285,7 @@ window.r20CustomEditorResetFonts = function() {
         nameInput.focus();
     };
 
-    /* ==========================================================================
-       [ 템플릿 관리 / 불러오기 모달 UI ]
-       ========================================================================== */
+    /* [ 템플릿 관리 / 불러오기 모달 UI ] */
 
     const openTemplateManagerModal = (editor, anchorBtn) => {
         let modal = document.getElementById('r20-template-manager-modal');
@@ -1428,7 +1337,7 @@ window.r20CustomEditorResetFonts = function() {
                     if (ts[i]) {
                         editor.focus();
                         document.execCommand('insertHTML', false, ts[i].html);
-                        modal.remove();
+                        closeModal();
                     }
                 });
 
@@ -1492,27 +1401,16 @@ window.r20CustomEditorResetFonts = function() {
         document.body.appendChild(modal);
         modal.addEventListener('mousedown', (e) => e.stopPropagation());
         positionFixedDropdown(modal, anchorBtn);
+        const closeModal = attachOutsideClickClose(modal, anchorBtn);
 
         modal.querySelector('#r20-tm-close').addEventListener('click', () => {
-            document.removeEventListener('click', closeOnOutsideClick, true);
-            modal.remove();
+            closeModal();
         });
-
-        const closeOnOutsideClick = (ev) => {
-            if (!modal.contains(ev.target) && ev.target !== anchorBtn) {
-                modal.remove();
-                document.removeEventListener('click', closeOnOutsideClick, true);
-            }
-        };
-        modal._r20CloseOnOutsideClick = closeOnOutsideClick;
-        setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
 
         renderList();
     };
 
-    /* ==========================================================================
-       [ 툴바 버튼 삽입 - 템플릿 저장/불러오기, 표 칸 합치기/나누기 ]
-       ========================================================================== */
+    /* [ 툴바 버튼 삽입 - 템플릿 저장/불러오기, 표 칸 합치기/나누기 ] */
     const injectTemplateButtons = () => {
         const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
 
@@ -1618,9 +1516,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 이미지 삽입 공통 유틸 ]
-       ========================================================================== */
+    /* [ 이미지 삽입 공통 유틸 ] */
 
     const getRangeFromPoint = (x, y) => {
         if (document.caretRangeFromPoint) {
@@ -1662,9 +1558,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 롤20 "아트 라이브러리" 항목을 드래그해서 편집창에 이미지 삽입 ]
-       ========================================================================== */
+    /* [ 롤20 "아트 라이브러리" 항목을 드래그해서 편집창에 이미지 삽입 ] */
 
     const extractLibraryDragUrl = (dragEl) => {
         if (!dragEl) return '';
@@ -1759,9 +1653,7 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 로컬 파일 첨부 & 이미지 첨부 팝업 UI ]
-       ========================================================================== */
+    /* [ 로컬 파일 첨부 & 이미지 첨부 팝업 UI ] */
     const readFileAsImage = (file, onDone) => {
         if (!file || !file.type.startsWith('image/')) return;
         const reader = new FileReader();
@@ -1817,20 +1709,12 @@ window.r20CustomEditorResetFonts = function() {
 
         document.body.appendChild(pop);
         pop.addEventListener('mousedown', (e) => e.stopPropagation());
-
-        const closeOnOutsideClick = (ev) => {
-            if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
-                pop.remove();
-                document.removeEventListener('click', closeOnOutsideClick, true);
-            }
-        };
-        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
-        setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
+        const closePop = attachOutsideClickClose(pop, anchorBtn);
 
         pop.querySelector('.r20-img-file-attach').addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            pop.remove();
+            closePop();
             triggerFileUpload(editor);
         });
 
@@ -1839,7 +1723,7 @@ window.r20CustomEditorResetFonts = function() {
             const url = urlInput.value.trim();
             if (!url) return;
             insertImageAtCursor(editor, cleanRoll20ImageUrl(url));
-            pop.remove();
+            closePop();
         };
         pop.querySelector('.r20-img-url-add').addEventListener('click', (e) => {
             e.preventDefault();
@@ -1852,47 +1736,189 @@ window.r20CustomEditorResetFonts = function() {
         urlInput.focus();
     };
 
-    const injectImageUploadButton = () => {
-        const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
+    /* [ 툴바에 글자 크기 드롭다운 삽입 - 폰트(글꼴) 지정과 달리 글자 크기는
+         Roll20 저장 시 서버가 걸러내지 않고 모두에게 그대로 적용되므로
+         무료 버전에도 포함한다 ] */
+    const refreshFontSizeUI = () => {
+        document.querySelectorAll('.custom-font-dropdown-wrapper').forEach(w => w.remove());
+        injectFontSizeDropdown();
+    };
 
-        toolbars.forEach(toolbar => {
-            if (toolbar.querySelector('.custom-img-upload-btn')) return;
+    const openFontSizeSettingsPopover = (anchorBtn) => {
+        document.getElementById('r20-font-settings-popover')?.remove();
 
-            const linkBtn = Array.from(toolbar.querySelectorAll('button')).find(btn =>
-                btn.querySelector('.note-icon-link') ||
-                (btn.getAttribute('data-original-title') || '').toLowerCase().includes('link') ||
-                (btn.getAttribute('title') || '').toLowerCase().includes('link')
-            );
-            if (!linkBtn) return;
+        let workingSizes = JSON.parse(JSON.stringify(CUSTOM_FONT_SIZES));
 
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'note-btn btn btn-default btn-sm custom-img-upload-btn';
-            btn.title = '이미지 첨부';
-            btn.setAttribute('aria-label', '이미지 첨부');
-            btn.innerHTML = `<i class="note-icon-picture"></i>`;
+        const rect = anchorBtn.getBoundingClientRect();
+        const pop = document.createElement('div');
+        pop.id = 'r20-font-settings-popover';
+        pop.style.cssText = `
+            position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px;
+            background: #fff; border: 1px solid #ccc; border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 999999;
+            padding: 10px; width: 260px; font-family: sans-serif; font-size: 12px;
+            color: #333; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
+            max-height: 80vh; overflow-y: auto;
+        `;
 
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+        pop.innerHTML = `
+            <label style="display:block; margin:0; color:#555; font-weight:bold;">글자 크기 목록 (쉼표로 구분)</label>
+            <input type="text" class="r20-fontsize-list-input" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box; color:#000; background:#fff;" value="${workingSizes.join(', ')}">
 
-                const editor = toolbar.closest('.note-editor, .tox-tinymce')?.querySelector('.note-editable, .tox-edit-area');
-                if (!editor) {
-                    alert('에디터 영역을 찾을 수 없습니다.');
-                    return;
-                }
+            <div style="display:flex; gap:4px; margin-top:4px;">
+                <button type="button" class="r20-font-save-btn btn btn-primary btn-sm" style="flex:1; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">저장</button>
+                <button type="button" class="r20-font-reset-btn btn btn-default btn-sm" style="flex:1; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">기본값으로</button>
+            </div>
+        `;
 
-                toggleCustomPopover('r20-img-insert-popover', () => openImageInsertPopover(editor, btn));
-            });
+        document.body.appendChild(pop);
+        pop.addEventListener('mousedown', (e) => e.stopPropagation());
+        const closePop = attachOutsideClickClose(pop, anchorBtn);
 
-            const insertGroup = linkBtn.closest('.note-insert') || linkBtn.parentNode;
-            insertGroup.insertBefore(btn, linkBtn);
+        pop.querySelector('.r20-font-save-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const sizesRaw = pop.querySelector('.r20-fontsize-list-input').value;
+            const parsedSizes = sizesRaw.split(',')
+                .map(s => parseInt(s.trim(), 10))
+                .filter(n => !isNaN(n) && n > 0);
+            const uniqueSizes = [...new Set(parsedSizes)].sort((a, b) => a - b);
+
+            if (uniqueSizes.length === 0) {
+                alert('크기가 최소 1개는 있어야 합니다.');
+                return;
+            }
+
+            CUSTOM_FONT_SIZES = uniqueSizes;
+            localStorage.setItem(R20_FONT_SIZES_STORAGE_KEY, JSON.stringify(CUSTOM_FONT_SIZES));
+
+            refreshFontSizeUI();
+            closePop();
+        });
+
+        pop.querySelector('.r20-font-reset-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            workingSizes = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONT_SIZES));
+            pop.querySelector('.r20-fontsize-list-input').value = workingSizes.join(', ');
         });
     };
 
-    /* ==========================================================================
-       [ 컴퓨터/브라우저에서 표준 드래그앤드롭으로 이미지 삽입 ]
-       ========================================================================== */
+    const injectFontSizeDropdown = () => {
+        const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
+
+        toolbars.forEach(toolbar => {
+            if (toolbar.querySelector('.custom-font-dropdown-wrapper')) return;
+
+            const styleBtnGroup = toolbar.querySelector('.note-style, div:has(.note-icon-magic)') || toolbar.firstElementChild;
+            if (!styleBtnGroup) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'note-btn-group btn-group custom-font-dropdown-wrapper';
+
+            wrapper.innerHTML = `
+                <select class="custom-fontsize-select btn btn-default btn-sm" style="
+                    height: 30px !important;
+                    line-height: 20px !important;
+                    width: 62px;
+                    font-size: 12px;
+                    padding: 3px 4px;
+                    margin: 0;
+                    border: 1px solid #ccc;
+                    border-radius: 3px;
+                    background: #ffffff;
+                    color: #333333;
+                    cursor: pointer;
+                    outline: none;
+                    box-shadow: none;
+                    vertical-align: middle;
+                ">
+                    <option value="" disabled selected>크기</option>
+                    ${CUSTOM_FONT_SIZES.map(size => `<option value="${size}px">${size}px</option>`).join('')}
+                </select>
+                <button type="button" class="note-btn btn btn-default btn-sm custom-font-settings-btn" title="글자 크기 목록 설정" aria-label="글자 크기 목록 설정">⚙</button>
+            `;
+
+            const sizeSelectEl = wrapper.querySelector('.custom-fontsize-select');
+            sizeSelectEl.addEventListener('mousedown', () => saveSelection(), true);
+            sizeSelectEl.addEventListener('pointerdown', () => saveSelection(), true);
+            sizeSelectEl.addEventListener('change', (e) => {
+                if (e.target.value) {
+                    applyTextStyle('fontSize', e.target.value);
+                }
+            });
+
+            const settingsBtn = wrapper.querySelector('.custom-font-settings-btn');
+            settingsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                toggleCustomPopover('r20-font-settings-popover', () => openFontSizeSettingsPopover(settingsBtn));
+            });
+
+            styleBtnGroup.parentNode.insertBefore(wrapper, styleBtnGroup.nextSibling);
+        });
+    };
+
+    /* [ 툴바 버튼 찾기 - 아이콘 클래스 또는 title/aria-label 텍스트로 기존 버튼을 검색 ] */
+    const findToolbarButton = (toolbar, iconClass, textFragments) => {
+        return Array.from(toolbar.querySelectorAll('button')).find(btn => {
+            if (iconClass && btn.querySelector(iconClass)) return true;
+            const label = (
+                (btn.getAttribute('data-original-title') || '') + ' ' +
+                (btn.getAttribute('title') || '') + ' ' +
+                (btn.getAttribute('aria-label') || '')
+            ).toLowerCase();
+            return textFragments.some(t => label.includes(t));
+        });
+    };
+
+    /* [ 툴바에 이미지 첨부 버튼 삽입 + 하이퍼링크 삭제 버튼을 하이퍼링크
+         버튼 옆으로 이동 - 새 그룹을 따로 만들지 않고, 원래 있던 하이퍼링크
+         버튼의 부모(이미 서머노트가 크기를 잡아놓은 자리) 안에 얹는 방식이라
+         레이아웃이 꽉 찬 줄에서 새 그룹이 통째로 찌그러져 사라지는 문제가
+         없다. 진단 로그로 확인해보니 정렬 그룹은 정확히 찾았지만 새로 만든
+         그룹이 폭 0으로 찌그러졌던 것으로 보여, 새 그룹을 만드는 방식 자체를
+         버렸다. 이미지 버튼은 원래 이 스크립트가 하이퍼링크 버튼 바로 앞에
+         넣던 자리 그대로다(정렬 버튼 그룹 바로 다음 자리인 게 서머노트
+         툴바의 기본 구성이라, 결과적으로 "정렬 옆"이 된다). ] */
+    const injectQuickActionButtons = () => {
+        const editorRoots = document.querySelectorAll('.note-editor, .tox-tinymce');
+
+        editorRoots.forEach(editorRoot => {
+            if (editorRoot.querySelector('.custom-img-upload-btn')) return;
+
+            const linkBtn = findToolbarButton(editorRoot, '.note-icon-link', ['link', '링크']);
+            if (!linkBtn) return;
+
+            const getEditor = () => editorRoot.querySelector('.note-editable, .tox-edit-area');
+
+            const imgBtn = document.createElement('button');
+            imgBtn.type = 'button';
+            imgBtn.className = 'note-btn btn btn-default btn-sm custom-img-upload-btn';
+            imgBtn.title = '이미지 첨부';
+            imgBtn.setAttribute('aria-label', '이미지 첨부');
+            imgBtn.innerHTML = `<i class="note-icon-picture"></i>`;
+            imgBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const editor = getEditor();
+                if (!editor) { alert('에디터 영역을 찾을 수 없습니다.'); return; }
+                toggleCustomPopover('r20-img-insert-popover', () => openImageInsertPopover(editor, imgBtn));
+            });
+
+            const insertGroup = linkBtn.closest('.note-insert') || linkBtn.parentNode;
+            insertGroup.insertBefore(imgBtn, linkBtn);
+
+            const unlinkBtn = findToolbarButton(editorRoot, '.note-icon-unlink, .note-icon-chain-broken', ['unlink', '링크 삭제', '링크 해제', '링크 제거']);
+            if (unlinkBtn) {
+                linkBtn.parentNode.insertBefore(unlinkBtn, linkBtn.nextSibling);
+            }
+        });
+    };
+
+    /* [ 컴퓨터/브라우저에서 표준 드래그앤드롭으로 이미지 삽입 ] */
 
     const handleEditorDragOver = (e) => {
         if (e.target.closest && e.target.closest('.note-editable')) {
@@ -1940,264 +1966,7 @@ window.r20CustomEditorResetFonts = function() {
         }
     };
 
-    /* ==========================================================================
-       [ 툴바에 폰트 선택 드롭다운 삽입 ]
-       ========================================================================== */
-    const refreshFontUI = () => {
-        document.querySelectorAll('.custom-font-dropdown-wrapper').forEach(w => w.remove());
-        injectFontDropdown();
-        loadWebFonts();
-    };
-
-    const openFontSettingsPopover = (anchorBtn) => {
-        document.getElementById('r20-font-settings-popover')?.remove();
-
-        let workingFonts = JSON.parse(JSON.stringify(CUSTOM_FONTS));
-        let workingSizes = JSON.parse(JSON.stringify(CUSTOM_FONT_SIZES));
-
-        const rect = anchorBtn.getBoundingClientRect();
-        const pop = document.createElement('div');
-        pop.id = 'r20-font-settings-popover';
-        pop.style.cssText = `
-            position: fixed; top: ${rect.bottom + 4}px; left: ${rect.left}px;
-            background: #fff; border: 1px solid #ccc; border-radius: 6px;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.3); z-index: 999999;
-            padding: 10px; width: 300px; font-family: sans-serif; font-size: 12px;
-            color: #333; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px;
-            max-height: 80vh; overflow-y: auto;
-        `;
-
-        pop.innerHTML = `
-            <label style="display:block; margin:0; color:#555; font-weight:bold;">🔤 폰트 목록 설정</label>
-            <div class="r20-font-list" style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; border:1px solid #eee; border-radius:4px; padding:4px;"></div>
-
-            <div style="display:flex; gap:4px;">
-                <input type="text" class="r20-font-name-input" placeholder="이름 (예: 내 폰트)" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-                <input type="text" class="r20-font-family-input" placeholder="font-family 값" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-            </div>
-            <input type="text" class="r20-font-url-input" placeholder="URL (또는 fonts.google.com 코드 통째로 붙여넣기)" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-            <button type="button" class="r20-font-add-btn btn btn-default btn-sm" style="width:100%; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">+ 폰트 추가</button>
-
-            <hr style="width:100%; margin:4px 0; border-top:1px solid #eee;">
-
-            <label style="display:block; margin:0; color:#555; font-weight:bold;">폰트 크기 목록 (쉼표로 구분)</label>
-            <input type="text" class="r20-fontsize-list-input" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;" value="${workingSizes.join(', ')}">
-
-            <div style="display:flex; gap:4px; margin-top:4px;">
-                <button type="button" class="r20-font-save-btn btn btn-primary btn-sm" style="flex:1; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">저장</button>
-                <button type="button" class="r20-font-reset-btn btn btn-default btn-sm" style="flex:1; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">기본값으로</button>
-            </div>
-        `;
-
-        document.body.appendChild(pop);
-        pop.addEventListener('mousedown', (e) => e.stopPropagation());
-
-        const listEl = pop.querySelector('.r20-font-list');
-        const renderFontList = () => {
-            listEl.innerHTML = workingFonts.map((font, idx) => `
-                <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
-                    <span style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${font.family}">${font.name}</span>
-                    <button type="button" class="r20-font-remove-btn" data-idx="${idx}" title="삭제" style="flex-shrink:0; width:18px; height:18px; line-height:16px; padding:0; border:1px solid #ccc; background:#fff; color:#a00; cursor:pointer; border-radius:3px;">×</button>
-                </div>
-            `).join('');
-
-            listEl.querySelectorAll('.r20-font-remove-btn').forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const idx = parseInt(btn.dataset.idx, 10);
-                    if (workingFonts.length <= 1) {
-                        console.warn('[R20-Custom-Editor] 폰트가 최소 1개는 있어야 합니다.');
-                        return;
-                    }
-                    workingFonts.splice(idx, 1);
-                    renderFontList();
-                });
-            });
-        };
-        renderFontList();
-
-        // URL 칸에 fonts.google.com 코드를 통째로 붙여넣으면(@import, <link> 등
-        // 형식 상관없이) 그 자리에서 자동으로 URL만 깔끔하게 정리하고, 이름/
-        // font-family 칸이 비어있으면 그것도 자동으로 채워준다.
-        const urlInputEl = pop.querySelector('.r20-font-url-input');
-        urlInputEl.addEventListener('input', () => {
-            const parsed = parseGoogleFontsCode(urlInputEl.value);
-            if (!parsed) return;
-
-            if (urlInputEl.value.trim() !== parsed.url) {
-                urlInputEl.value = parsed.url;
-            }
-            const nameInput = pop.querySelector('.r20-font-name-input');
-            const familyInput = pop.querySelector('.r20-font-family-input');
-            if (!nameInput.value.trim()) nameInput.value = parsed.name;
-            if (!familyInput.value.trim()) familyInput.value = parsed.family;
-        });
-
-        const closeOnOutsideClick = (ev) => {
-            if (!pop.contains(ev.target) && ev.target !== anchorBtn) {
-                pop.remove();
-                document.removeEventListener('click', closeOnOutsideClick, true);
-            }
-        };
-        pop._r20CloseOnOutsideClick = closeOnOutsideClick;
-        setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
-
-        pop.querySelector('.r20-font-add-btn').addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const nameInput = pop.querySelector('.r20-font-name-input');
-            const familyInput = pop.querySelector('.r20-font-family-input');
-            const urlInput = pop.querySelector('.r20-font-url-input');
-
-            const name = nameInput.value.trim();
-            const family = familyInput.value.trim();
-            const url = urlInput.value.trim();
-
-            if (!name || !family) {
-                console.warn('[R20-Custom-Editor] 이름과 font-family 값을 모두 입력해주세요.');
-                return;
-            }
-
-            workingFonts.push({ name, url, family });
-            renderFontList();
-
-            nameInput.value = '';
-            familyInput.value = '';
-            urlInput.value = '';
-        });
-
-        pop.querySelector('.r20-font-save-btn').addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const sizesRaw = pop.querySelector('.r20-fontsize-list-input').value;
-            const parsedSizes = sizesRaw.split(',')
-                .map(s => parseInt(s.trim(), 10))
-                .filter(n => !isNaN(n) && n > 0);
-            const uniqueSizes = [...new Set(parsedSizes)].sort((a, b) => a - b);
-
-            if (workingFonts.length === 0 || uniqueSizes.length === 0) {
-                console.warn('[R20-Custom-Editor] 폰트와 크기가 각각 1개 이상 있어야 저장할 수 있습니다.');
-                return;
-            }
-
-            CUSTOM_FONTS = workingFonts;
-            CUSTOM_FONT_SIZES = uniqueSizes;
-            localStorage.setItem(R20_FONTS_STORAGE_KEY, JSON.stringify(CUSTOM_FONTS));
-            localStorage.setItem(R20_FONT_SIZES_STORAGE_KEY, JSON.stringify(CUSTOM_FONT_SIZES));
-
-            refreshFontUI();
-
-            pop.remove();
-            document.removeEventListener('click', closeOnOutsideClick, true);
-        });
-
-        pop.querySelector('.r20-font-reset-btn').addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            workingFonts = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONTS));
-            workingSizes = JSON.parse(JSON.stringify(DEFAULT_CUSTOM_FONT_SIZES));
-            renderFontList();
-            pop.querySelector('.r20-fontsize-list-input').value = workingSizes.join(', ');
-        });
-    };
-
-    const injectFontDropdown = () => {
-        const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
-
-        toolbars.forEach(toolbar => {
-            if (toolbar.querySelector('.custom-font-dropdown-wrapper')) return;
-
-            const styleBtnGroup = toolbar.querySelector('.note-style, div:has(.note-icon-magic)') || toolbar.firstElementChild;
-            if (!styleBtnGroup) return;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'note-btn-group btn-group custom-font-dropdown-wrapper';
-
-            let optionsHTML = CUSTOM_FONTS.map(font =>
-                `<option value="${font.family}" style="font-family: ${font.family};">${font.name}</option>`
-            ).join('');
-
-            wrapper.innerHTML = `
-                <select class="custom-font-select btn btn-default btn-sm" style="
-                    height: 30px !important;
-                    line-height: 20px !important;
-                    max-width: 100px;
-                    font-size: 12px;
-                    padding: 3px 6px;
-                    margin: 0;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    background: #ffffff;
-                    color: #333333;
-                    cursor: pointer;
-                    text-overflow: ellipsis;
-                    outline: none;
-                    box-shadow: none;
-                    vertical-align: middle;
-                ">
-                    <option value="" disabled selected>폰트 선택</option>
-                    ${optionsHTML}
-                </select>
-                <select class="custom-fontsize-select btn btn-default btn-sm" style="
-                    height: 30px !important;
-                    line-height: 20px !important;
-                    width: 62px;
-                    font-size: 12px;
-                    padding: 3px 4px;
-                    margin: 0;
-                    border: 1px solid #ccc;
-                    border-radius: 3px;
-                    background: #ffffff;
-                    color: #333333;
-                    cursor: pointer;
-                    outline: none;
-                    box-shadow: none;
-                    vertical-align: middle;
-                ">
-                    <option value="" disabled selected>크기</option>
-                    ${CUSTOM_FONT_SIZES.map(size => `<option value="${size}px">${size}px</option>`).join('')}
-                </select>
-                <button type="button" class="note-btn btn btn-default btn-sm custom-font-settings-btn" title="폰트 목록 설정" aria-label="폰트 목록 설정">⚙</button>
-            `;
-
-            const selectEl = wrapper.querySelector('.custom-font-select');
-            // select가 포커스를 가져가면서 에디터의 선택 영역이 사라지기 전에
-            // 먼저 저장해둔다.
-            selectEl.addEventListener('mousedown', () => saveSelection(), true);
-            selectEl.addEventListener('pointerdown', () => saveSelection(), true);
-            selectEl.addEventListener('change', (e) => {
-                const value = e.target.value;
-                if (value) {
-                    applyTextStyle('fontFamily', value);
-                }
-                e.target.selectedIndex = 0;
-            });
-
-            const sizeSelectEl = wrapper.querySelector('.custom-fontsize-select');
-            sizeSelectEl.addEventListener('change', (e) => {
-                if (e.target.value) {
-                    applyTextStyle('fontSize', e.target.value);
-                }
-            });
-
-            const settingsBtn = wrapper.querySelector('.custom-font-settings-btn');
-            settingsBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                toggleCustomPopover('r20-font-settings-popover', () => openFontSettingsPopover(settingsBtn));
-            });
-
-            styleBtnGroup.parentNode.insertBefore(wrapper, styleBtnGroup.nextSibling);
-        });
-    };
-
-    /* ==========================================================================
-       [ 글자색/배경색 팝업에 커스텀 옵션 추가 ]
-       ========================================================================== */
+    /* [ 글자색/배경색 팝업에 커스텀 옵션 추가 ] */
     const enhanceColorPalette = () => {
         const colorPopups = document.querySelectorAll('.note-color .dropdown-menu, .tox-swatches-menu, .note-holder .dropdown-menu, div.dropdown-menu.note-holder-menu');
 
@@ -2206,31 +1975,34 @@ window.r20CustomEditorResetFonts = function() {
 
             const wrapper = document.createElement('div');
             wrapper.className = 'custom-color-picker-wrapper';
-            wrapper.style.cssText = 'padding: 8px; border-top: 1px solid #ccc; margin-top: 5px; font-size: 11px; background: #fff; position: relative; z-index: 99999;';
+            wrapper.style.cssText = 'padding: 8px; border-top: 1px solid #ccc; margin-top: 5px; font-size: 11px; background: #fff; position: relative; z-index: 99999; box-sizing:border-box;';
 
             wrapper.innerHTML = `
-                <div style="display:flex; align-items:center; justify-content:space-between;">
-                    <span style="color:#333; font-weight:bold;">🎨 커스텀:</span>
-                    <input type="color" class="custom-picker-input" value="#ff0000" style="width: 26px; height: 22px; padding: 0; border: 1px solid #ccc; cursor: pointer; vertical-align: middle;">
-                    <select class="custom-picker-type" style="height: 22px; font-size: 11px; padding: 0 2px;">
+                <div style="display:grid; grid-template-columns: 40px 40px 20px minmax(0, 1fr); align-items:end; gap:6px; row-gap:8px;">
+                    <span class="ccpw-label">커스텀</span>
+                    <input type="color" class="custom-picker-input ccpw-control" value="#ff0000" style="width:100%; padding:0; border:1px solid #ccc; cursor:pointer;">
+                    <span></span>
+                    <select class="custom-picker-type ccpw-control" style="width:100%; min-width:0; padding:0 2px;">
                         <option value="color">글자색</option>
                         <option value="backgroundColor">글자 배경색</option>
                         <option value="tableCellBg">표 칸 배경색</option>
                         <option value="tableCellBorder">표 칸 테두리</option>
                         <option value="hrStyle">가름줄(구분선)</option>
                     </select>
-                </div>
-                <div class="custom-border-options" style="display:none; align-items:center; justify-content:flex-end; gap:4px; margin-top:6px;">
-                    <label style="margin:0; color:#333;">두께</label>
-                    <input type="number" class="custom-border-width" value="1" min="1" max="20" style="width: 36px; height: 20px; font-size: 11px; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000;">
-                    <span>px</span>
-                    <select class="custom-border-style" style="height: 20px; font-size: 11px; padding: 0 2px;">
-                        <option value="solid">실선</option>
-                        <option value="dashed">파선</option>
-                        <option value="dotted">점선</option>
-                        <option value="double">이중선</option>
-                    </select>
-                    <button type="button" class="custom-border-apply btn btn-primary btn-sm" style="cursor:pointer; padding:2px 8px;">적용</button>
+
+                    <div class="custom-border-row" style="display:none;">
+                        <span class="ccpw-label">두께</span>
+                        <input type="number" class="custom-border-width ccpw-control" value="1" min="1" max="20" style="width:100%; text-align:center; padding:0; border:1px solid #ccc; background:#fff; color:#000;">
+                        <span class="ccpw-label">px</span>
+                        <select class="custom-border-style ccpw-control" style="width:100%; min-width:0; padding:0 2px;">
+                            <option value="solid">실선</option>
+                            <option value="dashed">파선</option>
+                            <option value="dotted">점선</option>
+                            <option value="double">이중선</option>
+                        </select>
+                    </div>
+
+                    <button type="button" class="custom-border-apply btn btn-primary btn-sm" style="grid-column: 1 / -1; width:100%; cursor:pointer; padding:5px 8px; box-sizing:border-box; margin-top:2px;">적용</button>
                 </div>
             `;
 
@@ -2239,14 +2011,14 @@ window.r20CustomEditorResetFonts = function() {
 
             const colorInput = wrapper.querySelector('.custom-picker-input');
             const typeSelect = wrapper.querySelector('.custom-picker-type');
-            const borderOptions = wrapper.querySelector('.custom-border-options');
+            const borderRow = wrapper.querySelector('.custom-border-row');
             const borderWidthInput = wrapper.querySelector('.custom-border-width');
             const borderStyleSelect = wrapper.querySelector('.custom-border-style');
 
             const usesBorderOptions = () => typeSelect.value === 'tableCellBorder' || typeSelect.value === 'hrStyle';
 
             typeSelect.addEventListener('change', () => {
-                borderOptions.style.display = usesBorderOptions() ? 'flex' : 'none';
+                borderRow.style.display = usesBorderOptions() ? 'contents' : 'none';
             });
 
             const applyByType = (color) => {
@@ -2272,12 +2044,13 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 팝업/드롭다운 위치 보정 - 화면·다이얼로그 밖으로 잘리지 않게 ]
-       ========================================================================== */
+    /* [ 팝업/드롭다운 위치 보정 - 화면·다이얼로그 밖으로 잘리지 않게 ] */
 
     const positionFixedDropdown = (menu, toggleBtn) => {
         if (!menu || !toggleBtn) return;
+
+        menu.style.width = 'max-content';
+        menu.style.maxWidth = '95vw';
 
         menu.style.position = 'fixed';
         menu.style.zIndex = '999999';
@@ -2324,9 +2097,17 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
-    /* ==========================================================================
-       [ 표 삽입 크기 선택 팝업에 너비/정렬 옵션 추가 ]
-       ========================================================================== */
+    /* [ 부트스트랩 툴팁 잔상 제거 ] */
+    const cleanupStrayTooltips = () => {
+        document.querySelectorAll('.tooltip').forEach(tip => {
+            const owner = tip.id ? document.querySelector(`[aria-describedby="${tip.id}"]`) : null;
+            if (!owner || !owner.matches(':hover')) {
+                tip.remove();
+            }
+        });
+    };
+
+    /* [ 표 삽입 크기 선택 팝업에 너비/정렬 옵션 추가 ] */
     const enhanceTableMenu = () => {
         const tablePopups = document.querySelectorAll([
             '.note-table .dropdown-menu',
@@ -2359,62 +2140,212 @@ window.r20CustomEditorResetFonts = function() {
                 </div>
             `;
 
-            optionsDiv.addEventListener('mousedown', (e) => e.stopPropagation());
-            optionsDiv.addEventListener('click', (e) => e.stopPropagation());
+            ['mousedown', 'click', 'mouseup', 'change'].forEach(type => {
+                optionsDiv.addEventListener(type, (e) => e.stopPropagation());
+            });
 
             targetContainer.appendChild(optionsDiv);
 
-            targetContainer.addEventListener('click', (e) => {
+            targetContainer.addEventListener('mousedown', (e) => {
                 const isDimensionCell = e.target.closest('.note-dimension-picker-unselected, .note-dimension-picker-mouseover, .note-dimension-picker-mousecatcher, .note-dimension-picker');
                 if (!isDimensionCell) return;
 
                 let widthInput = optionsDiv.querySelector('.custom-table-width').value.trim() || '400';
+                const widthNum = parseInt(widthInput, 10);
                 if (!isNaN(widthInput)) {
                     widthInput += 'px';
                 }
 
                 const alignVal = optionsDiv.querySelector('.custom-table-align').value || 'center';
 
+                const editorRoot = (targetContainer.closest('.note-editor, .tox-tinymce') || popup.closest('.note-editor, .tox-tinymce'))
+                    ?.querySelector('.note-editable, .tox-edit-area');
+
+                const scopeBeforeClick = editorRoot || document;
+                const existingTables = new Set(scopeBeforeClick.querySelectorAll('table'));
+
                 let attempts = 0;
                 const checkAndApplyTable = setInterval(() => {
                     attempts++;
-                    const tables = document.querySelectorAll('.note-editable table, .tox-edit-area table, table');
-                    const lastTable = tables[tables.length - 1];
+                    const scope = editorRoot || document;
+                    const tables = Array.from(scope.querySelectorAll('table'));
+                    const newTable = tables.find(t => !existingTables.has(t) && !t.dataset.customStyled);
 
-                    if (lastTable && !lastTable.dataset.customStyled) {
-                        lastTable.dataset.customStyled = 'true';
-                        lastTable.style.width = widthInput;
+                    if (newTable) {
+                        newTable.dataset.customStyled = 'true';
+                        newTable.style.setProperty('width', widthInput, 'important');
+                        newTable.style.setProperty('max-width', 'none', 'important');
+                        if (!isNaN(widthNum)) newTable.setAttribute('width', String(widthNum));
 
                         if (alignVal === 'center') {
-                            lastTable.style.marginLeft = 'auto';
-                            lastTable.style.marginRight = 'auto';
+                            newTable.style.marginLeft = 'auto';
+                            newTable.style.marginRight = 'auto';
                         } else if (alignVal === 'right') {
-                            lastTable.style.marginLeft = 'auto';
-                            lastTable.style.marginRight = '0';
+                            newTable.style.marginLeft = 'auto';
+                            newTable.style.marginRight = '0';
                         } else {
-                            lastTable.style.marginLeft = '0';
-                            lastTable.style.marginRight = 'auto';
+                            newTable.style.marginLeft = '0';
+                            newTable.style.marginRight = 'auto';
                         }
                         clearInterval(checkAndApplyTable);
                     }
 
-                    if (attempts > 10) clearInterval(checkAndApplyTable);
+                    if (attempts > 50) {
+                        console.warn('[R20-Custom-Editor] 표 너비 적용 실패: 5초 안에 새로 생긴 표를 못 찾았습니다.');
+                        clearInterval(checkAndApplyTable);
+                    }
                 }, 100);
             }, true);
         });
     };
 
-    /* ==========================================================================
-       [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ]
-       ========================================================================== */
-    const selectedHandoutIds = new Set();
-    const JOURNAL_ITEM_SELECTOR = 'li.journalitem[data-itemid], li.nj-item[data-itemid]';
-    const JOURNAL_NAME_SELECTOR = '.namecontainer, .nj-name';
-
+    /* [ 공통 유틸 - 항목 다중 선택 & 삭제 컨트롤러 ] */
     const hideD20ContextMenu = (fromEl) => {
         const menu = fromEl.closest('.d20contextmenu');
         if (menu) menu.style.display = 'none';
     };
+
+    const createMultiSelectController = (config) => {
+        const selectedIds = new Set();
+        let lastAnchorId = null;
+
+        const getOrderedIds = () => Array.from(document.querySelectorAll(config.itemSelector))
+            .map(el => el.dataset[config.idAttr])
+            .filter(Boolean);
+
+        const syncStyles = () => {
+            if (selectedIds.size === 0) return;
+            document.querySelectorAll(config.itemSelector).forEach(item => {
+                const nameEl = item.querySelector(config.nameSelector);
+                if (!nameEl) return;
+                if (selectedIds.has(item.dataset[config.idAttr])) {
+                    nameEl.classList.add('r20-journal-selected-name');
+                } else {
+                    nameEl.classList.remove('r20-journal-selected-name');
+                }
+            });
+        };
+
+        const clearSelection = () => {
+            lastAnchorId = null;
+            if (selectedIds.size === 0) return;
+            selectedIds.clear();
+            syncStyles();
+        };
+
+        const selectRange = (anchorId, targetId) => {
+            const ids = getOrderedIds();
+            const anchorIdx = ids.indexOf(anchorId);
+            const targetIdx = ids.indexOf(targetId);
+            if (anchorIdx === -1 || targetIdx === -1) return;
+
+            const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
+            for (let i = start; i <= end; i++) {
+                if (!config.getModel || config.getModel(ids[i])) selectedIds.add(ids[i]);
+            }
+            syncStyles();
+        };
+
+        const toggleSelection = (item) => {
+            const id = item.dataset[config.idAttr];
+            if (!id) return;
+            if (config.getModel && !config.getModel(id)) return;
+
+            if (selectedIds.has(id)) {
+                selectedIds.delete(id);
+            } else {
+                selectedIds.add(id);
+            }
+            syncStyles();
+        };
+
+        return {
+            selectedIds,
+            getLastAnchorId: () => lastAnchorId,
+            setLastAnchorId: (id) => { lastAnchorId = id; },
+            getOrderedIds, syncStyles, clearSelection, selectRange, toggleSelection,
+        };
+    };
+
+    const registerMultiSelectEvents = (config) => {
+        const { controller, itemSelector, idAttr, getModel, deleteItemSelector, deleteAction, clearAllowSelector, injectDeleteMenuItem } = config;
+
+        const handleCtrlInteraction = (e) => {
+            if (!(e.ctrlKey || e.metaKey)) return false;
+            const item = e.target.closest(itemSelector);
+            if (!item) return false;
+
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return item;
+        };
+
+        let ctrlMousedownHandled = false;
+
+        document.addEventListener('mousedown', (e) => {
+            const deleteItem = e.target.closest(deleteItemSelector);
+            if (deleteItem) {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                deleteAction();
+                hideD20ContextMenu(deleteItem);
+                return;
+            }
+
+            const item = handleCtrlInteraction(e);
+            if (item) {
+                const id = item.dataset[idAttr];
+                const anchorId = controller.getLastAnchorId();
+                if (e.shiftKey && anchorId) {
+                    controller.selectRange(anchorId, id);
+                } else {
+                    controller.toggleSelection(item);
+                    controller.setLastAnchorId(id);
+                }
+                ctrlMousedownHandled = true;
+            }
+        }, true);
+
+        document.addEventListener('click', (e) => {
+            if (ctrlMousedownHandled) {
+                ctrlMousedownHandled = false;
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                return;
+            }
+
+            if (handleCtrlInteraction(e)) return;
+
+            const item = e.target.closest(itemSelector);
+            if (item && (e.ctrlKey || e.metaKey)) return;
+
+            if (controller.selectedIds.size > 0 && !e.target.closest(clearAllowSelector)) {
+                controller.clearSelection();
+            }
+        }, true);
+
+        document.addEventListener('contextmenu', (e) => {
+            const item = e.target.closest(itemSelector);
+            const id = item ? item.dataset[idAttr] : null;
+
+            if (!item && controller.selectedIds.size === 0) return;
+
+            if (id && (!getModel || getModel(id)) && !controller.selectedIds.has(id)) {
+                controller.selectedIds.clear();
+                controller.selectedIds.add(id);
+                controller.syncStyles();
+            }
+
+            setTimeout(injectDeleteMenuItem, 0);
+        }, true);
+    };
+
+    /* [ 핸드아웃 · 캐릭터 다중 선택 & 삭제 ] */
+    const JOURNAL_ITEM_SELECTOR = 'li.journalitem[data-itemid], li.nj-item[data-itemid]';
+    const JOURNAL_NAME_SELECTOR = '.namecontainer, .nj-name';
 
     const getHandoutModel = (id) => {
         if (!id || !window.Campaign) return null;
@@ -2427,60 +2358,17 @@ window.r20CustomEditorResetFonts = function() {
         return null;
     };
 
-    const syncJournalSelectionStyles = () => {
-        document.querySelectorAll(JOURNAL_ITEM_SELECTOR).forEach(item => {
-            const nameEl = item.querySelector(JOURNAL_NAME_SELECTOR);
-            if (!nameEl) return;
-            if (selectedHandoutIds.has(item.dataset.itemid)) {
-                nameEl.classList.add('r20-journal-selected-name');
-            } else {
-                nameEl.classList.remove('r20-journal-selected-name');
-            }
-        });
-    };
-
-    let lastHandoutAnchorId = null;
-
-    const clearHandoutSelection = () => {
-        lastHandoutAnchorId = null;
-        if (selectedHandoutIds.size === 0) return;
-        selectedHandoutIds.clear();
-        syncJournalSelectionStyles();
-    };
-
-    const getOrderedJournalIds = () => Array.from(document.querySelectorAll(JOURNAL_ITEM_SELECTOR))
-        .map(el => el.dataset.itemid)
-        .filter(Boolean);
-
-    const selectHandoutRange = (anchorId, targetId) => {
-        const ids = getOrderedJournalIds();
-        const anchorIdx = ids.indexOf(anchorId);
-        const targetIdx = ids.indexOf(targetId);
-        if (anchorIdx === -1 || targetIdx === -1) return;
-
-        const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
-        for (let i = start; i <= end; i++) {
-            if (getHandoutModel(ids[i])) selectedHandoutIds.add(ids[i]);
-        }
-        syncJournalSelectionStyles();
-    };
-
-    const toggleHandoutSelection = (item) => {
-        const id = item.dataset.itemid;
-        if (!id || !getHandoutModel(id)) return;
-
-        if (selectedHandoutIds.has(id)) {
-            selectedHandoutIds.delete(id);
-        } else {
-            selectedHandoutIds.add(id);
-        }
-        syncJournalSelectionStyles();
-    };
+    const journalSelect = createMultiSelectController({
+        itemSelector: JOURNAL_ITEM_SELECTOR,
+        nameSelector: JOURNAL_NAME_SELECTOR,
+        idAttr: 'itemid',
+        getModel: getHandoutModel,
+    });
 
     const deleteSelectedHandouts = () => {
-        if (selectedHandoutIds.size === 0) return;
+        if (journalSelect.selectedIds.size === 0) return;
 
-        const targets = Array.from(selectedHandoutIds);
+        const targets = Array.from(journalSelect.selectedIds);
 
         const names = targets.map(id => {
             const model = getHandoutModel(id);
@@ -2495,7 +2383,7 @@ window.r20CustomEditorResetFonts = function() {
             if (model) model.destroy();
         });
 
-        clearHandoutSelection();
+        journalSelect.clearSelection();
     };
 
     const injectJournalDeleteMenuItem = () => {
@@ -2509,7 +2397,7 @@ window.r20CustomEditorResetFonts = function() {
 
         let deleteItem = container.querySelector('.r20-custom-delete-item');
 
-        if (selectedHandoutIds.size === 0) {
+        if (journalSelect.selectedIds.size === 0) {
             if (deleteItem) deleteItem.remove();
             return;
         }
@@ -2520,77 +2408,24 @@ window.r20CustomEditorResetFonts = function() {
             container.appendChild(deleteItem);
         }
 
-        deleteItem.textContent = `선택한 ${selectedHandoutIds.size}개 일괄 삭제`;
+        deleteItem.textContent = `선택한 ${journalSelect.selectedIds.size}개 일괄 삭제`;
     };
 
-    /* ==========================================================================
-       [ 라이브러리 이미지 다중 선택 & 삭제 ]
-       - 저널/캐릭터 다중 선택 삭제와 동일한 패턴(Ctrl+클릭 선택, 우클릭 메뉴에
-         일괄 삭제 항목 추가)을 라이브러리(#imagedialog) 이미지 목록에도 적용한다.
-       - 라이브러리 이미지는 Campaign의 Backbone 콜렉션으로 관리되지 않는 계정
-         단위 자산이라 .destroy() 같은 API가 없다. 대신 Roll20이 실제 "삭제"
-         클릭 시 서버로 보내는 요청을 그대로 재현한다.
-         (POST /image_library/permdelete, payload: {ids: {imageids: [...]}} - 개발자
-         도구 Network 탭에서 실측 확인함)
-       ========================================================================== */
-    const selectedImageIds = new Set();
+    /* [ 라이브러리 이미지 다중 선택 & 삭제 ] */
     const LIBRARY_ITEM_SELECTOR = 'li[data-imageid]';
     const LIBRARY_NAME_SELECTOR = '.namecontainer';
 
-    const syncLibrarySelectionStyles = () => {
-        document.querySelectorAll(LIBRARY_ITEM_SELECTOR).forEach(item => {
-            const nameEl = item.querySelector(LIBRARY_NAME_SELECTOR);
-            if (!nameEl) return;
-            if (selectedImageIds.has(item.dataset.imageid)) {
-                nameEl.classList.add('r20-journal-selected-name');
-            } else {
-                nameEl.classList.remove('r20-journal-selected-name');
-            }
-        });
-    };
-
-    let lastImageAnchorId = null;
-
-    const clearImageSelection = () => {
-        lastImageAnchorId = null;
-        if (selectedImageIds.size === 0) return;
-        selectedImageIds.clear();
-        syncLibrarySelectionStyles();
-    };
-
-    const getOrderedImageIds = () => Array.from(document.querySelectorAll(LIBRARY_ITEM_SELECTOR))
-        .map(el => el.dataset.imageid)
-        .filter(Boolean);
-
-    const selectImageRange = (anchorId, targetId) => {
-        const ids = getOrderedImageIds();
-        const anchorIdx = ids.indexOf(anchorId);
-        const targetIdx = ids.indexOf(targetId);
-        if (anchorIdx === -1 || targetIdx === -1) return;
-
-        const [start, end] = anchorIdx <= targetIdx ? [anchorIdx, targetIdx] : [targetIdx, anchorIdx];
-        for (let i = start; i <= end; i++) {
-            selectedImageIds.add(ids[i]);
-        }
-        syncLibrarySelectionStyles();
-    };
-
-    const toggleImageSelection = (item) => {
-        const id = item.dataset.imageid;
-        if (!id) return;
-
-        if (selectedImageIds.has(id)) {
-            selectedImageIds.delete(id);
-        } else {
-            selectedImageIds.add(id);
-        }
-        syncLibrarySelectionStyles();
-    };
+    const librarySelect = createMultiSelectController({
+        itemSelector: LIBRARY_ITEM_SELECTOR,
+        nameSelector: LIBRARY_NAME_SELECTOR,
+        idAttr: 'imageid',
+        getModel: null,
+    });
 
     const deleteSelectedImages = () => {
-        if (selectedImageIds.size === 0) return;
+        if (librarySelect.selectedIds.size === 0) return;
 
-        const targets = Array.from(selectedImageIds);
+        const targets = Array.from(librarySelect.selectedIds);
 
         const confirmed = window.confirm(`선택한 이미지 ${targets.length}개를 라이브러리에서 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없고, 이미지 자체가 영구 삭제됩니다.`);
         if (!confirmed) return;
@@ -2599,7 +2434,7 @@ window.r20CustomEditorResetFonts = function() {
             targets.forEach(id => {
                 document.querySelectorAll(`li[data-imageid="${id}"]`).forEach(el => el.remove());
             });
-            clearImageSelection();
+            librarySelect.clearSelection();
         };
 
         const failUp = (err) => {
@@ -2636,7 +2471,7 @@ window.r20CustomEditorResetFonts = function() {
 
         let deleteItem = container.querySelector('.r20-custom-image-delete-item');
 
-        if (selectedImageIds.size === 0) {
+        if (librarySelect.selectedIds.size === 0) {
             if (deleteItem) deleteItem.remove();
             return;
         }
@@ -2647,13 +2482,13 @@ window.r20CustomEditorResetFonts = function() {
             container.appendChild(deleteItem);
         }
 
-        deleteItem.textContent = `선택한 ${selectedImageIds.size}개 이미지 일괄 삭제`;
+        deleteItem.textContent = `선택한 ${librarySelect.selectedIds.size}개 이미지 일괄 삭제`;
     };
 
-    /* ==========================================================================
-       [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ]
-       ========================================================================== */
+    /* [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ] */
     document.addEventListener('selectionchange', () => {
+        updateTableCellHighlight();
+
         const selection = window.getSelection();
         if (!selection || !selection.rangeCount) return;
 
@@ -2661,7 +2496,6 @@ window.r20CustomEditorResetFonts = function() {
         const editor = getEditorFromNode(range.commonAncestorContainer);
         if (!editor) return;
 
-        // 실제 핸드아웃 편집 영역에서 발생한 선택만 저장
         saveSelection();
     });
 
@@ -2669,170 +2503,50 @@ window.r20CustomEditorResetFonts = function() {
     document.addEventListener('dragover', handleEditorDragOver, true);
     document.addEventListener('drop', handleEditorImageDrop, true);
 
-    const handleJournalCtrlInteraction = (e) => {
-        if (!(e.ctrlKey || e.metaKey)) return false;
-        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
-        if (!item) return false;
+    registerMultiSelectEvents({
+        controller: journalSelect,
+        itemSelector: JOURNAL_ITEM_SELECTOR,
+        idAttr: 'itemid',
+        getModel: getHandoutModel,
+        deleteItemSelector: '.r20-custom-delete-item',
+        deleteAction: deleteSelectedHandouts,
+        clearAllowSelector: '.r20-custom-delete-item, #journal-context-menu',
+        injectDeleteMenuItem: injectJournalDeleteMenuItem,
+    });
 
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        return item;
-    };
-
-    let journalCtrlMousedownHandled = false;
-
-    document.addEventListener('mousedown', (e) => {
-        const handoutDeleteItem = e.target.closest('.r20-custom-delete-item');
-        if (handoutDeleteItem) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            deleteSelectedHandouts();
-            hideD20ContextMenu(handoutDeleteItem);
-            return;
-        }
-
-        const item = handleJournalCtrlInteraction(e);
-        if (item) {
-            const id = item.dataset.itemid;
-            if (e.shiftKey && lastHandoutAnchorId) {
-                selectHandoutRange(lastHandoutAnchorId, id);
-            } else {
-                toggleHandoutSelection(item);
-                lastHandoutAnchorId = id;
-            }
-            journalCtrlMousedownHandled = true;
-        }
-    }, true);
-
-    document.addEventListener('click', (e) => {
-        if (journalCtrlMousedownHandled) {
-            journalCtrlMousedownHandled = false;
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            return;
-        }
-
-        if (handleJournalCtrlInteraction(e)) return;
-
-        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
-        if (item && (e.ctrlKey || e.metaKey)) return;
-
-        if (selectedHandoutIds.size > 0 && !e.target.closest('.r20-custom-delete-item, #journal-context-menu')) {
-            clearHandoutSelection();
-        }
-    }, true);
-
-    document.addEventListener('contextmenu', (e) => {
-        const item = e.target.closest(JOURNAL_ITEM_SELECTOR);
-        const id = item ? item.dataset.itemid : null;
-
-        if (!item && selectedHandoutIds.size === 0) return;
-
-        if (id && getHandoutModel(id) && !selectedHandoutIds.has(id)) {
-            selectedHandoutIds.clear();
-            selectedHandoutIds.add(id);
-            syncJournalSelectionStyles();
-        }
-
-        setTimeout(injectJournalDeleteMenuItem, 0);
-    }, true);
-
-    const handleLibraryCtrlInteraction = (e) => {
-        if (!(e.ctrlKey || e.metaKey)) return false;
-        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
-        if (!item) return false;
-
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        return item;
-    };
-
-    let libraryCtrlMousedownHandled = false;
-
-    document.addEventListener('mousedown', (e) => {
-        const imageDeleteItem = e.target.closest('.r20-custom-image-delete-item');
-        if (imageDeleteItem) {
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            deleteSelectedImages();
-            hideD20ContextMenu(imageDeleteItem);
-            return;
-        }
-
-        const item = handleLibraryCtrlInteraction(e);
-        if (item) {
-            const id = item.dataset.imageid;
-            if (e.shiftKey && lastImageAnchorId) {
-                selectImageRange(lastImageAnchorId, id);
-            } else {
-                toggleImageSelection(item);
-                lastImageAnchorId = id;
-            }
-            libraryCtrlMousedownHandled = true;
-        }
-    }, true);
-
-    document.addEventListener('click', (e) => {
-        if (libraryCtrlMousedownHandled) {
-            libraryCtrlMousedownHandled = false;
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation();
-            return;
-        }
-
-        if (handleLibraryCtrlInteraction(e)) return;
-
-        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
-        if (item && (e.ctrlKey || e.metaKey)) return;
-
-        if (selectedImageIds.size > 0 && !e.target.closest('.r20-custom-image-delete-item, #librarycopymenu')) {
-            clearImageSelection();
-        }
-    }, true);
-
-    document.addEventListener('contextmenu', (e) => {
-        const item = e.target.closest(LIBRARY_ITEM_SELECTOR);
-        const id = item ? item.dataset.imageid : null;
-
-        if (!item && selectedImageIds.size === 0) return;
-
-        if (id && !selectedImageIds.has(id)) {
-            selectedImageIds.clear();
-            selectedImageIds.add(id);
-            syncLibrarySelectionStyles();
-        }
-
-        setTimeout(injectLibraryDeleteMenuItem, 0);
-    }, true);
+    registerMultiSelectEvents({
+        controller: librarySelect,
+        itemSelector: LIBRARY_ITEM_SELECTOR,
+        idAttr: 'imageid',
+        getModel: null,
+        deleteItemSelector: '.r20-custom-image-delete-item',
+        deleteAction: deleteSelectedImages,
+        clearAllowSelector: '.r20-custom-image-delete-item, #librarycopymenu',
+        injectDeleteMenuItem: injectLibraryDeleteMenuItem,
+    });
 
     const runEnhancer = () => {
         cleanupLegacyDisplayBake();
-        loadWebFonts();
         forceInjectLabelDOM();
-        injectFontDropdown();
-        injectImageUploadButton();
+        injectFontSizeDropdown();
+        injectQuickActionButtons();
         enableLibraryDropOnEditors();
         injectTemplateButtons();
         injectTableMergeSplitButtons();
         injectHrInsertButton();
         enhanceColorPalette();
         fixColorDropdownClipping();
+        cleanupStrayTooltips();
         enhanceTableMenu();
         makeTablesResizable();
         fixInvalidInlineWrapping();
         normalizeTableAlignment();
-        syncJournalSelectionStyles();
-        syncLibrarySelectionStyles();
+        journalSelect.syncStyles();
+        librarySelect.syncStyles();
     };
 
     document.addEventListener('click', (e) => {
-        const targetImg = e.target.closest('.handoutviewer img, .dialog:not(.editing) .note-editable img, img.r20-custom-lightbox-img');
+        const targetImg = e.target.closest('.handoutviewer img, .dialog:not(.editing) .note-editable img');
         const parentLink = e.target.closest('a');
 
         if (targetImg && targetImg.src && !targetImg.closest('.avatar')) {
@@ -2851,37 +2565,50 @@ window.r20CustomEditorResetFonts = function() {
             return false;
         }
 
-        // 폰트 서버 동기화가 진행 중일 때는 runEnhancer를 돌리지 않는다.
-        // (동기화 과정 자체가 탭 전환용 .click()을 발생시키는데, 그 클릭이
-        // 이 리스너를 다시 타면서 runEnhancer가 에디터를 재스캔/재주입하고,
-        // 그 과정에서 포커스가 핸드아웃 편집창으로 되돌아가 채팅 전송이
-        // 씹히는 문제가 있었다.)
         if (r20FontSyncInFlight.size === 0) {
-            setTimeout(runEnhancer, 30);
+            requestAnimationFrame(runEnhancer);
         }
     }, true);
 
     setInterval(() => {
-        // 아래 click 리스너와 동일한 이유로, 동기화 중에는 건너뛴다.
+
         if (r20FontSyncInFlight.size === 0) runEnhancer();
-    }, 500);
+    }, 1000);
+
+    const R20_MUTATION_WATCH_EXCLUDE_SELECTOR = '#textchat, #editor-wrapper';
+
+    let disconnectCheckTimer = null;
+    const scheduleDisconnectCheck = () => {
+        clearTimeout(disconnectCheckTimer);
+        disconnectCheckTimer = setTimeout(() => {
+            if (r20FontSyncInFlight.size > 0) {
+                scheduleDisconnectCheck();
+                return;
+            }
+            lastKnownEditorContent.forEach((entry, editorEl) => {
+                if (!editorEl.isConnected) {
+                    lastKnownEditorContent.delete(editorEl);
+                    syncFontStyledContentToServer(entry.handoutId, entry.field, entry.html);
+                }
+            });
+        }, 3000);
+    };
 
     let mutationDebounceTimer = null;
-    const observer = new MutationObserver(() => {
-        // 편집창이 실제로 닫혀서 DOM에서 사라진 에디터가 있으면, 마지막으로
-        // 캐시해둔 내용을 폰트 서버 동기화로 흘려보낸다(사라진 걸 확인하는
-        // 건 가벼운 isConnected 체크뿐이라 v1.21의 blur 렉 문제와는 다름).
-        lastKnownEditorContent.forEach((entry, editorEl) => {
-            if (!editorEl.isConnected) {
-                lastKnownEditorContent.delete(editorEl);
-                syncFontStyledContentToServer(entry.handoutId, entry.field, entry.html);
-            }
-        });
+    const observer = new MutationObserver((mutationsList) => {
+        const hasRelevantChange = mutationsList.some(m =>
+            !(m.target.closest && m.target.closest(R20_MUTATION_WATCH_EXCLUDE_SELECTOR))
+        );
+        if (!hasRelevantChange) return;
+
+        scheduleDisconnectCheck();
 
         clearTimeout(mutationDebounceTimer);
-        if (r20FontSyncInFlight.size === 0) {
-            mutationDebounceTimer = setTimeout(runEnhancer, 150);
-        }
+        if (r20FontSyncInFlight.size > 0) return;
+
+        mutationDebounceTimer = setTimeout(() => {
+            runEnhancer();
+        }, 150);
     });
     observer.observe(document.body, { childList: true, subtree: true });
 })();
