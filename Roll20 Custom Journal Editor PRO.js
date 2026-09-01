@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.5
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.2 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.5 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -2380,6 +2380,11 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     const syncJournalSelectionStyles = () => {
+        // 선택된 게 하나도 없으면 지울 클래스도 없다(클래스는 항상 선택 변경
+        // 시점에 직접 sync를 호출해 정리하므로, 새로 렌더링된 노드에 우리
+        // 클래스가 남아있을 일도 없다). 그래서 안전하게 통째로 건너뛸 수
+        // 있다 - 큰 캠페인에서 저널 항목이 많을수록 이 전체 스캔이 비쌌음.
+        if (selectedHandoutIds.size === 0) return;
         document.querySelectorAll(JOURNAL_ITEM_SELECTOR).forEach(item => {
             const nameEl = item.querySelector(JOURNAL_NAME_SELECTOR);
             if (!nameEl) return;
@@ -2490,6 +2495,8 @@ window.r20CustomEditorResetFonts = function() {
     const LIBRARY_NAME_SELECTOR = '.namecontainer';
 
     const syncLibrarySelectionStyles = () => {
+        // syncJournalSelectionStyles와 동일한 이유로 선택이 없으면 건너뛴다.
+        if (selectedImageIds.size === 0) return;
         document.querySelectorAll(LIBRARY_ITEM_SELECTOR).forEach(item => {
             const nameEl = item.querySelector(LIBRARY_NAME_SELECTOR);
             if (!nameEl) return;
@@ -2813,27 +2820,52 @@ window.r20CustomEditorResetFonts = function() {
         }
     }, true);
 
+    // 폴백용 주기 스캔. 클릭/DOM변화 트리거로 대부분 커버되지만, 그걸로
+    // 안 잡히는 경우를 위한 안전망이라 반응성을 크게 해치지 않는 선에서
+    // 간격을 늘려(0.5초 → 1초) 상시 부하를 줄인다.
     setInterval(() => {
         // 아래 click 리스너와 동일한 이유로, 동기화 중에는 건너뛴다.
         if (r20FontSyncInFlight.size === 0) runEnhancer();
-    }, 500);
+    }, 1000);
+
+    // Roll20 페이지 전체(채팅 로그, 토큰 이동 등)의 DOM 변화를 감시하다 보니
+    // 활발한 세션에서는 변화가 아주 잦다. 예전엔 변화가 있을 때마다 즉시
+    // (디바운스 없이) lastKnownEditorContent를 훑었는데, 그게 계속 쌓이는
+    // 부하의 원인 중 하나였다. runEnhancer 예약과 같은 디바운스로 묶어서
+    // 변화가 잦아들었을 때 한 번만 처리하도록 합쳤다(sync 트리거가 살짝
+    // 늦게 잡히는 건 문제 없음 - 시간에 민감한 동작이 아님).
+    // 채팅 로그(#textchat), 맵 보드 전체(#editor-wrapper - 캔버스, 토큰 이름표/
+    // 체력바 오버레이(#vm-tabletop-ui-layer) 등을 다 포함하는 컨테이너. 특히
+    // 토큰 오버레이는 Vue가 토큰 위치/체력바를 실시간으로 반영하는 곳이라
+    // 전투 중처럼 토큰이 자주 움직일 때 채팅만큼이나 변화가 잦음)처럼 우리
+    // UI랑 무관한데 변화가 아주 잦은 영역은 감시에서 사실상 제외한다(네이티브
+    // MutationObserver는 "감시 대상 안에서 특정 하위 트리만 빼고 관찰"하는
+    // 기능이 없어서, 콜백 안에서 변화가 일어난 곳이 제외 대상 안인지 걸러내는
+    // 방식으로 흉내낸다).
+    const R20_MUTATION_WATCH_EXCLUDE_SELECTOR = '#textchat, #editor-wrapper';
 
     let mutationDebounceTimer = null;
-    const observer = new MutationObserver(() => {
-        // 편집창이 실제로 닫혀서 DOM에서 사라진 에디터가 있으면, 마지막으로
-        // 캐시해둔 내용을 폰트 서버 동기화로 흘려보낸다(사라진 걸 확인하는
-        // 건 가벼운 isConnected 체크뿐이라 v1.21의 blur 렉 문제와는 다름).
-        lastKnownEditorContent.forEach((entry, editorEl) => {
-            if (!editorEl.isConnected) {
-                lastKnownEditorContent.delete(editorEl);
-                syncFontStyledContentToServer(entry.handoutId, entry.field, entry.html);
-            }
-        });
+    const observer = new MutationObserver((mutationsList) => {
+        const hasRelevantChange = mutationsList.some(m =>
+            !(m.target.closest && m.target.closest(R20_MUTATION_WATCH_EXCLUDE_SELECTOR))
+        );
+        if (!hasRelevantChange) return;
 
         clearTimeout(mutationDebounceTimer);
-        if (r20FontSyncInFlight.size === 0) {
-            mutationDebounceTimer = setTimeout(runEnhancer, 150);
-        }
+        if (r20FontSyncInFlight.size > 0) return;
+
+        mutationDebounceTimer = setTimeout(() => {
+            // 편집창이 실제로 닫혀서 DOM에서 사라진 에디터가 있으면, 마지막으로
+            // 캐시해둔 내용을 폰트 서버 동기화로 흘려보낸다(사라진 걸 확인하는
+            // 건 가벼운 isConnected 체크뿐이라 v1.21의 blur 렉 문제와는 다름).
+            lastKnownEditorContent.forEach((entry, editorEl) => {
+                if (!editorEl.isConnected) {
+                    lastKnownEditorContent.delete(editorEl);
+                    syncFontStyledContentToServer(entry.handoutId, entry.field, entry.html);
+                }
+            });
+            runEnhancer();
+        }, 150);
     });
     observer.observe(document.body, { childList: true, subtree: true });
 })();
