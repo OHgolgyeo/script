@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.34
+// @version      1.35
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.34');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.35');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -322,7 +322,9 @@ window.r20CustomEditorResetFonts = function() {
     };
 
     const sendR20ChatMessage = (text) => new Promise((resolve) => {
-        const textarea = document.querySelector(R20_CHAT_TEXTAREA_SELECTOR);
+        const allTextareas = document.querySelectorAll(R20_CHAT_TEXTAREA_SELECTOR);
+        console.log(`[R20-Custom-Editor] 채팅창 후보 개수: ${allTextareas.length}`);
+        const textarea = allTextareas[0];
         if (!textarea) { resolve(false); return; }
 
         // execCommand('insertText', ...)는 "지금 포커스된 곳"에 작동하는
@@ -332,19 +334,25 @@ window.r20CustomEditorResetFonts = function() {
         nativeValueSetter.call(textarea, text);
         textarea.dispatchEvent(new Event('input', { bubbles: true }));
         textarea.focus();
+        console.log('[R20-Custom-Editor] 값 주입 직후 → activeElement:', document.activeElement, ' textarea.value 길이:', textarea.value.length);
 
         setTimeout(() => {
             // 그 사이 다른 로직(runEnhancer 등)이 포커스를 가져갔을 가능성에
             // 대비해 Enter를 보내기 직전에 한 번 더 포커스를 확인/재요청한다.
+            console.log('[R20-Custom-Editor] Enter 전송 직전 → activeElement:', document.activeElement, ' textarea.value 길이:', textarea.value.length);
             if (document.activeElement !== textarea) {
                 console.warn('[R20-Custom-Editor] 폰트 동기화: Enter 전송 직전 포커스가 채팅창이 아님 →', document.activeElement);
                 textarea.focus();
+                console.log('[R20-Custom-Editor] 재포커스 시도 후 → activeElement:', document.activeElement);
             }
             ['keydown', 'keypress', 'keyup'].forEach(type => {
                 textarea.dispatchEvent(new KeyboardEvent(type, {
                     key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
                 }));
             });
+            setTimeout(() => {
+                console.log('[R20-Custom-Editor] Enter 전송 100ms 후 → textarea.value 길이:', textarea.value.length, '(0이면 전송된 것으로 보임, 그대로면 실패)');
+            }, 100);
             resolve(true);
         }, 50);
     });
@@ -363,7 +371,11 @@ window.r20CustomEditorResetFonts = function() {
         // (조각마다 탭을 왔다갔다 하면 타이밍이 꼬여서 일부가 유실될 수 있음).
         const previousTabId = getActiveR20TabId();
         const switchedTab = !!(previousTabId && previousTabId !== R20_CHAT_TAB_ID && clickR20Tab(R20_CHAT_TAB_ID));
-        if (switchedTab) await new Promise(r => setTimeout(r, 120));
+        console.log(`[R20-Custom-Editor] 탭 전환 정보 → 이전 탭: ${previousTabId}, 전환 시도함: ${switchedTab}`);
+        if (switchedTab) {
+            await new Promise(r => setTimeout(r, 120));
+            console.log('[R20-Custom-Editor] 전환 대기 후 실제 활성 탭:', getActiveR20TabId());
+        }
 
         try {
             const fullHtml = buildFontImportStyleBlock() + html;
