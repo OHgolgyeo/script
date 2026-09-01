@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
 // @grant        none
-// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20PRO.js
-// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor%20PRO.js
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Custom%20Journal%20Editor.js
 // ==/UserScript==
 
 /* ==========================================================================
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.0 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.1 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -1945,12 +1945,8 @@ window.r20CustomEditorResetFonts = function() {
             <label style="display:block; margin:0; color:#555; font-weight:bold;">🔤 폰트 목록 설정</label>
             <div class="r20-font-list" style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; border:1px solid #eee; border-radius:4px; padding:4px;"></div>
 
-            <div style="display:flex; gap:4px;">
-                <input type="text" class="r20-font-name-input" placeholder="이름 (예: 내 폰트)" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-                <input type="text" class="r20-font-family-input" placeholder="font-family 값" style="flex:1; min-width:0; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-            </div>
-            <input type="text" class="r20-font-url-input" placeholder="URL (또는 fonts.google.com 코드 통째로 붙여넣기)" style="width:100%; height:24px; font-size:11px; padding:0 4px; border:1px solid #ccc; box-sizing:border-box;">
-            <button type="button" class="r20-font-add-btn btn btn-default btn-sm" style="width:100%; padding:4px 0; cursor:pointer; box-sizing:border-box; margin:0;">+ 폰트 추가</button>
+            <input type="text" class="r20-font-paste-input" placeholder="구글 폰트에서 복사한 코드를 여기에 붙여넣으세요 (Ctrl+V)" style="width:100%; height:26px; font-size:11px; padding:0 6px; border:1px solid #ccc; box-sizing:border-box;">
+            <div class="r20-font-paste-msg" style="font-size:10px; min-height:14px; margin:0;"></div>
 
             <hr style="width:100%; margin:4px 0; border-top:1px solid #eee;">
 
@@ -1991,21 +1987,32 @@ window.r20CustomEditorResetFonts = function() {
         };
         renderFontList();
 
-        // URL 칸에 fonts.google.com 코드를 통째로 붙여넣으면(@import, <link> 등
-        // 형식 상관없이) 그 자리에서 자동으로 URL만 깔끔하게 정리하고, 이름/
-        // font-family 칸이 비어있으면 그것도 자동으로 채워준다.
-        const urlInputEl = pop.querySelector('.r20-font-url-input');
-        urlInputEl.addEventListener('input', () => {
-            const parsed = parseGoogleFontsCode(urlInputEl.value);
-            if (!parsed) return;
-
-            if (urlInputEl.value.trim() !== parsed.url) {
-                urlInputEl.value = parsed.url;
+        // 구글 폰트 사이트에서 "복사" 버튼으로 얻은 코드를 형식 상관없이
+        // (@import, <link>, URL만 등) 그대로 붙여넣기만 하면, 이름/font-family/
+        // URL을 전부 자동으로 뽑아서 곧바로 목록에 추가한다. 별도로 칸을
+        // 채우거나 추가 버튼을 누를 필요가 없다.
+        const pasteInputEl = pop.querySelector('.r20-font-paste-input');
+        const pasteMsgEl = pop.querySelector('.r20-font-paste-msg');
+        pasteInputEl.addEventListener('input', () => {
+            const parsed = parseGoogleFontsCode(pasteInputEl.value);
+            if (!parsed) {
+                pasteMsgEl.textContent = pasteInputEl.value.trim() ? '❌ 인식할 수 없는 코드입니다.' : '';
+                pasteMsgEl.style.color = '#a00';
+                return;
             }
-            const nameInput = pop.querySelector('.r20-font-name-input');
-            const familyInput = pop.querySelector('.r20-font-family-input');
-            if (!nameInput.value.trim()) nameInput.value = parsed.name;
-            if (!familyInput.value.trim()) familyInput.value = parsed.family;
+
+            const isDuplicate = workingFonts.some(f => f.family === parsed.family || (f.url && parsed.url && f.url === parsed.url));
+            pasteInputEl.value = '';
+            if (isDuplicate) {
+                pasteMsgEl.textContent = `⚠️ '${parsed.name}'은(는) 이미 목록에 있습니다.`;
+                pasteMsgEl.style.color = '#a70';
+                return;
+            }
+
+            workingFonts.push({ name: parsed.name, url: parsed.url, family: parsed.family });
+            renderFontList();
+            pasteMsgEl.textContent = `✅ '${parsed.name}' 추가됨 (아래 "저장"을 눌러야 최종 반영됩니다)`;
+            pasteMsgEl.style.color = '#080';
         });
 
         const closeOnOutsideClick = (ev) => {
@@ -2016,31 +2023,6 @@ window.r20CustomEditorResetFonts = function() {
         };
         pop._r20CloseOnOutsideClick = closeOnOutsideClick;
         setTimeout(() => document.addEventListener('click', closeOnOutsideClick, true), 0);
-
-        pop.querySelector('.r20-font-add-btn').addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const nameInput = pop.querySelector('.r20-font-name-input');
-            const familyInput = pop.querySelector('.r20-font-family-input');
-            const urlInput = pop.querySelector('.r20-font-url-input');
-
-            const name = nameInput.value.trim();
-            const family = familyInput.value.trim();
-            const url = urlInput.value.trim();
-
-            if (!name || !family) {
-                console.warn('[R20-Custom-Editor] 이름과 font-family 값을 모두 입력해주세요.');
-                return;
-            }
-
-            workingFonts.push({ name, url, family });
-            renderFontList();
-
-            nameInput.value = '';
-            familyInput.value = '';
-            urlInput.value = '';
-        });
 
         pop.querySelector('.r20-font-save-btn').addEventListener('click', (e) => {
             e.preventDefault();
