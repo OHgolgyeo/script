@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.35
+// @version      1.36
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.35');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.36');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -345,6 +345,28 @@ window.r20CustomEditorResetFonts = function() {
                 textarea.focus();
                 console.log('[R20-Custom-Editor] 재포커스 시도 후 → activeElement:', document.activeElement);
             }
+
+            // textarea에 class="ui-autocomplete-input"이 붙어있다는 건 jQuery UI
+            // Autocomplete 위젯이 연결돼있다는 뜻. "!"로 시작하는 명령어를 넣으면
+            // Roll20의 API 명령어 자동완성 목록이 뜨는데, 그 목록이 열려있는 채로
+            // Enter를 보내면 위젯이 그 Enter를 가로채 "메시지 전송"이 아니라
+            // "자동완성 항목 선택"으로 처리해버려 입력값만 사라지고 실제 전송은
+            // 안 되는 문제가 있었다. Enter 보내기 직전에 강제로 닫아준다.
+            try {
+                const jq = window.jQuery || window.$;
+                if (jq && jq.fn && jq.fn.autocomplete) {
+                    jq(textarea).autocomplete('close');
+                    console.log('[R20-Custom-Editor] jQuery UI 자동완성 팝업 닫기 시도함');
+                }
+            } catch (e) {
+                console.log('[R20-Custom-Editor] 자동완성 닫기 시도 중 오류(무시):', e.message);
+            }
+            // 혹시 위 방법이 안 통할 경우를 대비해 Escape도 한 번 보내둔다
+            // (jQuery UI Autocomplete는 기본적으로 Escape에 팝업을 닫도록 반응한다).
+            textarea.dispatchEvent(new KeyboardEvent('keydown', {
+                key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true
+            }));
+
             ['keydown', 'keypress', 'keyup'].forEach(type => {
                 textarea.dispatchEvent(new KeyboardEvent(type, {
                     key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
