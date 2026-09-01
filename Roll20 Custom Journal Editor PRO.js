@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor (Pro)
 // @namespace    http://tampermonkey.net/
-// @version      1.6
+// @version      1.10
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 구글 폰트 적용 시 동봉된 R20FontSync.js API 스크립트와 연동해 스크립트가 없는 다른 사람에게도 폰트가 그대로 보이도록 서버에 직접 저장(Roll20 Pro 구독 + API Scripts 설정 필요), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -72,7 +72,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.6 (Pro)');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.10 (Pro)');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -98,6 +98,9 @@ window.r20CustomEditorResetFonts = function() {
             .note-editable td, .note-editable th {
                 position: relative;
                 word-break: break-all;
+            }
+            .r20-table-cell-selected {
+                box-shadow: inset 0 0 0 999px rgba(51, 122, 255, 0.28) !important;
             }
             .note-editable p,
             .handoutviewer p {
@@ -134,6 +137,14 @@ window.r20CustomEditorResetFonts = function() {
         const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
         if (!element || !element.closest) return null;
         return element.closest('.note-editable, .tox-edit-area') || null;
+    };
+
+    // 스크립트가 execCommand를 거치지 않고 직접 DOM을 조작했을 때, 에디터
+    // 라이브러리(Summernote 등)가 내용이 바뀐 걸 알아채지 못해 저장 시점에
+    // 옛날 내용으로 되돌아가는 문제를 막기 위한 공통 알림 함수.
+    const notifyEditorContentChanged = (editor) => {
+        if (!editor) return;
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'formatSetBlockTextDirection' }));
     };
 
     const saveSelection = () => {
@@ -470,6 +481,17 @@ window.r20CustomEditorResetFonts = function() {
         styleProperty.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
 
     const wrapSelectedTextRuns = (editor, range, cssProp, value) => {
+        // range의 startContainer/endContainer/startOffset은 여기서 딱 한 번만
+        // 읽어서 고정해둔다. 아래 루프에서 splitText/insertBefore 등으로 DOM을
+        // 계속 바꾸는데, range는 "살아있는" 객체라 그 과정에서 브라우저가
+        // 경계를 자동으로 재조정할 수 있고, 문단이 여러 개일 때(특히 전체
+        // 선택) 뒤쪽 문단부터 처리하다 보면 앞쪽 문단 차례에 와서 값이 이미
+        // 어긋나 그 문단만 통째로 빠지는 문제가 실제로 있었다.
+        const rangeStartContainer = range.startContainer;
+        const rangeStartOffset = range.startOffset;
+        const rangeEndContainer = range.endContainer;
+        const rangeEndOffset = range.endOffset;
+
         const textNodes = [];
         const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
@@ -481,16 +503,21 @@ window.r20CustomEditorResetFonts = function() {
         let n;
         while ((n = walker.nextNode())) textNodes.push(n);
 
-        const createdSpans = [];
-
-        for (let i = textNodes.length - 1; i >= 0; i--) {
-            const textNode = textNodes[i];
-            if (!textNode.parentNode) continue;
-
-            let startOffset = textNode === range.startContainer ? range.startOffset : 0;
-            let endOffset = textNode === range.endContainer ? range.endOffset : textNode.nodeValue.length;
+        // 실제 DOM을 건드리기 전에, 노드별로 적용할 시작/끝 오프셋을 전부
+        // 미리 계산해서 고정 배열로 만들어둔다.
+        const runs = textNodes.map(textNode => {
+            let startOffset = textNode === rangeStartContainer ? rangeStartOffset : 0;
+            let endOffset = textNode === rangeEndContainer ? rangeEndOffset : textNode.nodeValue.length;
             startOffset = Math.max(0, Math.min(startOffset, textNode.nodeValue.length));
             endOffset = Math.max(0, Math.min(endOffset, textNode.nodeValue.length));
+            return { textNode, startOffset, endOffset };
+        });
+
+        const createdSpans = [];
+
+        for (let i = runs.length - 1; i >= 0; i--) {
+            const { textNode, startOffset, endOffset } = runs[i];
+            if (!textNode.parentNode) continue;
             if (startOffset >= endOffset) continue;
 
             let targetNode = textNode;
@@ -654,6 +681,46 @@ window.r20CustomEditorResetFonts = function() {
         return cells;
     };
 
+    /* [ 표 칸 드래그 선택 시 하이라이트 표시 ]
+       브라우저 자체의 표 칸 선택 하이라이트가 두 번째 칸부터 제대로 안 보이는
+       경우가 있어(브라우저/에디터의 렌더링 한계로 추정), 우리가 직접 클래스를
+       칸에 붙여서 하이라이트를 그려준다. 실제로 어떤 칸이 선택됐는지는
+       getSelectedTableCells()가 이미 정확히 계산하므로 표시만 보강하는 것. */
+    let highlightedTableCells = new Set();
+
+    const clearTableCellHighlight = () => {
+        if (highlightedTableCells.size === 0) return;
+        highlightedTableCells.forEach(cell => cell.classList.remove('r20-table-cell-selected'));
+        highlightedTableCells.clear();
+    };
+
+    const updateTableCellHighlight = () => {
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount || selection.isCollapsed) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const anchorEditor = getEditorFromNode(selection.anchorNode);
+        if (!anchorEditor) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const cells = getSelectedTableCells();
+        if (cells.length < 2) {
+            clearTableCellHighlight();
+            return;
+        }
+
+        const nextSet = new Set(cells);
+        highlightedTableCells.forEach(cell => {
+            if (!nextSet.has(cell)) cell.classList.remove('r20-table-cell-selected');
+        });
+        nextSet.forEach(cell => cell.classList.add('r20-table-cell-selected'));
+        highlightedTableCells = nextSet;
+    };
+
     /* [ 표 칸 합치기 / 나누기 ] */
 
     const mergeSelectedTableCells = () => {
@@ -712,6 +779,20 @@ window.r20CustomEditorResetFonts = function() {
         orderedCells.forEach(cell => {
             if (cell !== topLeftCell) cell.remove();
         });
+
+        clearTableCellHighlight();
+
+        const editor = getEditorFromNode(table);
+        notifyEditorContentChanged(editor);
+
+        const newSelection = window.getSelection();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(topLeftCell);
+        newRange.collapse(false);
+        newSelection.removeAllRanges();
+        newSelection.addRange(newRange);
+        savedRange = newRange.cloneRange();
+        savedEditor = editor;
     };
 
     const splitSelectedTableCell = () => {
@@ -771,6 +852,8 @@ window.r20CustomEditorResetFonts = function() {
                 grid[r][c] = newCell;
             }
         }
+
+        notifyEditorContentChanged(getEditorFromNode(table));
     };
 
     /* [ 표 칸 배경색 / 테두리, 가름줄 스타일 적용 ] */
@@ -784,6 +867,7 @@ window.r20CustomEditorResetFonts = function() {
             return;
         }
         cells.forEach(cell => { cell.style.backgroundColor = color; });
+        notifyEditorContentChanged(getEditorFromNode(cells[0]));
     };
 
     const applyTableCellBorder = (color, widthPx, style) => {
@@ -796,6 +880,7 @@ window.r20CustomEditorResetFonts = function() {
         }
         const w = Math.max(1, parseInt(widthPx, 10) || 1);
         cells.forEach(cell => { cell.style.border = `${w}px ${style} ${color}`; });
+        notifyEditorContentChanged(getEditorFromNode(cells[0]));
     };
 
     const applyHrStyle = (color, widthPx, style) => {
@@ -1913,6 +1998,57 @@ window.r20CustomEditorResetFonts = function() {
         });
     };
 
+    /* [ 폰트 드롭다운에 현재 커서 위치의 폰트 이름 표시 ] */
+
+    // "'Nanum Myeongjo', serif" 같은 문자열에서 맨 앞 폰트 이름만 뽑아
+    // 따옴표/공백 없이 소문자로 통일 - 비교용.
+    const normalizeFontFamily = (str) => {
+        if (!str) return '';
+        const first = String(str).split(',')[0] || '';
+        return first.replace(/["']/g, '').trim().toLowerCase();
+    };
+
+    // 커서(또는 선택영역 시작 지점)부터 에디터 경계까지 조상을 거슬러 올라가며
+    // 인라인 font-family가 걸려있는 가장 가까운 요소의 값을 찾는다. 못 찾으면
+    // 명시적으로 지정된 폰트가 없다는 뜻이므로 'inherit'으로 취급한다
+    // ("기본 폰트" 항목의 family 값과 동일).
+    const getInlineFontFamilyAtCursor = (editor, node) => {
+        let el = node && node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+        while (el && (el === editor || editor.contains(el))) {
+            if (el.style && el.style.fontFamily) return el.style.fontFamily;
+            el = el.parentElement;
+        }
+        return '';
+    };
+
+    const getCurrentFontDisplayName = (editor) => {
+        if (!editor) return '';
+        const selection = window.getSelection();
+        if (!selection || !selection.rangeCount) return '';
+        const anchorNode = selection.anchorNode;
+        if (!anchorNode || !editor.contains(anchorNode)) return '';
+
+        const rawFamily = getInlineFontFamilyAtCursor(editor, anchorNode);
+        const target = normalizeFontFamily(rawFamily || 'inherit');
+
+        const match = CUSTOM_FONTS.find(font => normalizeFontFamily(font.family) === target);
+        return match ? match.name : '';
+    };
+
+    const updateFontDropdownDisplay = (editor) => {
+        if (!editor) return;
+        const container = editor.closest('.note-editor, .tox-tinymce');
+        const wrapper = container ? container.querySelector('.custom-font-dropdown-wrapper') : null;
+        if (!wrapper) return;
+
+        const selectEl = wrapper.querySelector('.custom-font-select');
+        const placeholderOption = selectEl ? selectEl.querySelector('option[value=""]') : null;
+        if (!selectEl || !placeholderOption) return;
+
+        const fontName = getCurrentFontDisplayName(editor);
+        placeholderOption.textContent = fontName || '폰트 선택';
+    };
+
     const injectFontDropdown = () => {
         const toolbars = document.querySelectorAll('.note-toolbar, .tox-toolbar__group');
 
@@ -1980,6 +2116,7 @@ window.r20CustomEditorResetFonts = function() {
                 const value = e.target.value;
                 if (value) {
                     applyTextStyle('fontFamily', value);
+                    updateFontDropdownDisplay(savedEditor);
                 }
                 e.target.selectedIndex = 0;
             });
@@ -1999,6 +2136,9 @@ window.r20CustomEditorResetFonts = function() {
             });
 
             styleBtnGroup.parentNode.insertBefore(wrapper, styleBtnGroup.nextSibling);
+
+            const initEditor = toolbar.closest('.note-editor, .tox-tinymce')?.querySelector('.note-editable, .tox-edit-area');
+            if (initEditor) updateFontDropdownDisplay(initEditor);
         });
     };
 
@@ -2446,6 +2586,8 @@ window.r20CustomEditorResetFonts = function() {
 
     /* [ 전역 이벤트 등록 & 개선 기능 일괄 실행 루프 ] */
     document.addEventListener('selectionchange', () => {
+        updateTableCellHighlight();
+
         const selection = window.getSelection();
         if (!selection || !selection.rangeCount) return;
 
@@ -2453,6 +2595,7 @@ window.r20CustomEditorResetFonts = function() {
         const editor = getEditorFromNode(range.commonAncestorContainer);
         if (!editor) return;
 
+        updateFontDropdownDisplay(editor);
         saveSelection();
     });
 
