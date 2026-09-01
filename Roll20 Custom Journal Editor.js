@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Custom Journal Editor
 // @namespace    http://tampermonkey.net/
-// @version      1.33
+// @version      1.34
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  기존의 핸드아웃 편집창에 몇 가지 기능을 추가하고 오류를 수정했습니다. (지원 기능: 본문 이미지 첨부(URL 입력/파일 선택/드래그앤드롭/라이브러리 드래그 지원), 폰트와 크기 지정 및 목록 설정창을 통한 폰트 추가·삭제(사용자 설정은 localStorage에 저장되어 스크립트 업데이트 후에도 유지됨), 색상 선택 기능 추가, 표 너비·높이·정렬 변경, 표 칸 배경색·테두리 지정, 표 칸 합치기·나누기, 가름줄(구분선) 색상·두께·모양 변경, 템플릿 저장·불러오기(실제 내용 미리보기 지원), 구글 문서 붙여넣을 시 양식 깨지는 오류 수정, 핸드아웃/캐릭터/라이브러리 이미지 다중 선택(Ctrl+클릭, Ctrl+Shift+클릭 범위 선택) 후 우클릭으로 일괄 삭제)
 // @match        https://app.roll20.net/editor/*
@@ -85,7 +85,7 @@ window.r20CustomEditorResetFonts = function() {
 (function() {
     'use strict';
 
-    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.33');
+    console.log('[R20-Custom-Editor] 스크립트 실행 시작, 버전 1.34');
 
     if (!document.getElementById('r20-custom-style-v30')) {
         const style = document.createElement('style');
@@ -334,6 +334,12 @@ window.r20CustomEditorResetFonts = function() {
         textarea.focus();
 
         setTimeout(() => {
+            // 그 사이 다른 로직(runEnhancer 등)이 포커스를 가져갔을 가능성에
+            // 대비해 Enter를 보내기 직전에 한 번 더 포커스를 확인/재요청한다.
+            if (document.activeElement !== textarea) {
+                console.warn('[R20-Custom-Editor] 폰트 동기화: Enter 전송 직전 포커스가 채팅창이 아님 →', document.activeElement);
+                textarea.focus();
+            }
             ['keydown', 'keypress', 'keyup'].forEach(type => {
                 textarea.dispatchEvent(new KeyboardEvent(type, {
                     key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true
@@ -364,10 +370,12 @@ window.r20CustomEditorResetFonts = function() {
             const b64 = base64EncodeUtf8(fullHtml);
             const totalChunks = Math.max(1, Math.ceil(b64.length / R20_FONT_SYNC_CHUNK_SIZE));
 
+            console.log(`[R20-Custom-Editor] 폰트 동기화 시작: ${handoutId}/${field}, 총 ${totalChunks}개 조각`);
             for (let i = 0; i < totalChunks; i++) {
                 const chunk = b64.slice(i * R20_FONT_SYNC_CHUNK_SIZE, (i + 1) * R20_FONT_SYNC_CHUNK_SIZE);
                 const command = `!r20fontsync ${handoutId} ${field} ${i} ${totalChunks} ${chunk}`;
                 const sent = await sendR20ChatMessage(command);
+                console.log(`[R20-Custom-Editor] 조각 ${i + 1}/${totalChunks} 전송 시도 결과:`, sent);
                 if (!sent) {
                     console.warn('[R20-Custom-Editor] 채팅창을 찾지 못해 폰트 서버 동기화를 못 보냈습니다.');
                     break;
@@ -2786,10 +2794,20 @@ window.r20CustomEditorResetFonts = function() {
             return false;
         }
 
-        setTimeout(runEnhancer, 30);
+        // 폰트 서버 동기화가 진행 중일 때는 runEnhancer를 돌리지 않는다.
+        // (동기화 과정 자체가 탭 전환용 .click()을 발생시키는데, 그 클릭이
+        // 이 리스너를 다시 타면서 runEnhancer가 에디터를 재스캔/재주입하고,
+        // 그 과정에서 포커스가 핸드아웃 편집창으로 되돌아가 채팅 전송이
+        // 씹히는 문제가 있었다.)
+        if (r20FontSyncInFlight.size === 0) {
+            setTimeout(runEnhancer, 30);
+        }
     }, true);
 
-    setInterval(runEnhancer, 500);
+    setInterval(() => {
+        // 아래 click 리스너와 동일한 이유로, 동기화 중에는 건너뛴다.
+        if (r20FontSyncInFlight.size === 0) runEnhancer();
+    }, 500);
 
     let mutationDebounceTimer = null;
     const observer = new MutationObserver(() => {
@@ -2804,7 +2822,9 @@ window.r20CustomEditorResetFonts = function() {
         });
 
         clearTimeout(mutationDebounceTimer);
-        mutationDebounceTimer = setTimeout(runEnhancer, 150);
+        if (r20FontSyncInFlight.size === 0) {
+            mutationDebounceTimer = setTimeout(runEnhancer, 150);
+        }
     });
     observer.observe(document.body, { childList: true, subtree: true });
 })();
