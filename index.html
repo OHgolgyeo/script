@@ -207,9 +207,9 @@
   }
 
   .desc-panel{
-    width: 490px;
+    width: 500px;
     flex-shrink:0;
-    padding: 22px 24px;
+    padding: 22px 24px 22px 34px;
     border-right: none;
     overflow-y:auto;
   }
@@ -232,10 +232,10 @@
 
   .desc-actions{
     display:flex;
-    flex-wrap:wrap;
-    align-items:center;
-    gap: 6px;
-    margin-top: 14px;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:6px;
+    margin-top:14px;
   }
 
   .version-picker{
@@ -279,6 +279,8 @@
     font-size: 12px;
     text-decoration:none;
     white-space:nowrap;
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
   .blog-link.visible{
     display:inline-flex;
@@ -578,7 +580,21 @@ function renderHtmlDescription(htmlContent){
 
   const iframe = document.createElement('iframe');
   iframe.className = 'desc-frame';
-  iframe.srcdoc = htmlContent;
+
+  // 설명은 iframe 안에 렌더링되므로 부모 페이지의 줄바꿈 CSS가 전달되지 않습니다.
+  // info HTML 안에도 어절 단위 줄바꿈 규칙을 강제로 추가합니다.
+  const wrapStyle = `
+    <style id="archive-word-wrap">
+      html, body, p, li, div, span, h1, h2, h3, h4, h5, h6, a, strong, em {
+        word-break: keep-all !important;
+        overflow-wrap: break-word !important;
+      }
+    </style>`;
+  const srcdocHtml = /<\/head>/i.test(htmlContent)
+    ? htmlContent.replace(/<\/head>/i, wrapStyle + '</head>')
+    : wrapStyle + htmlContent;
+
+  iframe.srcdoc = srcdocHtml;
   iframe.addEventListener('load', () => {
     try {
       const h = iframe.contentDocument.documentElement.scrollHeight;
