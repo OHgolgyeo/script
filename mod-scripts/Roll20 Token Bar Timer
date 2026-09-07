@@ -1,0 +1,471 @@
+// =============================================
+//  Roll20 Token Bar Timer
+//  초 단위 / 바 번호 선택 / 토큰 바 값 자동 읽기
+//  증가·감소 / 증감값 지정 / 목표값·횟수 종료 조건
+// =============================================
+//
+//  ---------------------------------------------------
+//  사전 준비
+//  ---------------------------------------------------
+//  1. 사용할 토큰의 바(1~4)에 미리 현재값(value)과 최대값(max)을 설정해두세요
+//     · 특성치(hp, mp 등)를 연결해도 되고, 직접 숫자를 입력해도 됩니다
+//     · API는 토큰에 설정된 값을 그대로 읽어서 시작합니다
+//  2. 해당 바가 맵 위에 보이도록 표시 옵션을 켜두세요
+//
+//  ---------------------------------------------------
+//  명령어 목록
+//  * 추천 매크로
+//  !bartimer start ?{토큰이름}|?{바번호|1|2|3|4}|?{초간격(1분=60)}|?{방향(up=증가, down=감소)|up|down}|?{증감값}|?{종료조건(목표값, 목표t, 목표s}
+//  !bartimer ?{stop(중지), pause(일시정지), resume(재시작)|stop|pause|resume} ?{토큰이름}|?{바번호|1|2|3|4}
+//  ---------------------------------------------------
+//
+//  ▶ 타이머 시작
+//    !bartimer start 토큰이름|바번호|초간격|방향|증감값|종료조건
+//
+//    · 토큰이름 : 맵에 올라간 토큰의 정확한 이름 (띄어쓰기 인식 불가)
+//    · 바번호   : 1, 2, 3, 4 중 하나
+//    · 초간격   : 몇 초마다 바를 변경할지
+//    · 방향     : up(증가) 또는 down(감소) — 생략 시 기본값 up
+//    · 증감값   : 한 번에 얼마나 변경할지 — 생략 시 기본값 1
+//    · 종료조건 : 아래 세 가지 방식 중 선택 — 생략 시 max/0 도달 시 종료
+//
+//      숫자      → 목표값: 해당 값에 도달하면 종료
+//                  예) 20    → 값이 20이 되면 종료
+//
+//      숫자t     → 횟수: 해당 횟수만큼 변경 후 종료
+//                  예) 5t    → 5번 변경 후 종료
+//
+//      숫자s     → 시간: 해당 시간이 지나면 종료
+//                  예) 5s    → 5분 후 종료
+//
+//  예시)
+//    !bartimer start 테스트|2|60|down|1
+//      → bar2 현재값에서 시작, 60초마다 -1, 0이 되면 종료 (기본 종료)
+//
+//    !bartimer start 테스트|2|60|down|1|20
+//      → bar2 현재값(예: 30)에서 시작, 60초마다 -1, 20이 되면 종료
+//
+//    !bartimer start 테스트|2|60|down|1|5t
+//      → bar2 현재값에서 시작, 60초마다 -1, 5번 변경 후 종료
+//
+//    !bartimer start 테스트|4|30|up|5|80
+//      → bar4 현재값에서 시작, 30초마다 +5, 80이 되면 종료
+//
+//    !bartimer start 테스트|4|30|up|5|3t
+//      → bar4 현재값에서 시작, 30초마다 +5, 3번 변경 후 종료
+//
+//  ⏸ 일시정지
+//    !bartimer pause             → 전체 일시정지
+//    !bartimer pause 토큰이름|바번호  → 특정 타이머만 일시정지
+//
+//  ▶ 재개
+//    !bartimer resume            → 전체 재개
+//    !bartimer resume 토큰이름|바번호 → 특정 타이머만 재개
+//
+//  🔍 상태 확인
+//    !bartimer status            → 전체 상태 확인
+//    !bartimer status 토큰이름|바번호 → 특정 타이머 상태 확인
+//
+//  🛑 타이머 중단
+//    !bartimer stop              → 전체 중단
+//    !bartimer stop 토큰이름|바번호   → 특정 타이머만 중단
+//
+//
+//  ---------------------------------------------------
+//  주의사항
+//  ---------------------------------------------------
+//  · setInterval은 Roll20 서버 재시작 시 초기화됩니다.
+//    새로고침 후엔 !bartimer start로 재시작하세요.
+//  · 너무 짧은 간격(1~4초)은 API 서버 부하가 생길 수 있습니다.
+//    테스트 외에는 5초 이상을 권장합니다.
+//  · 단일 타이머 운용 기준입니다.
+//    새로 start하면 기존 타이머는 자동으로 중단됩니다.
+//  · 토큰 바에 hp 등 특성치를 연결한 경우,
+//    토큰 설정에서 value와 max를 먼저 올바르게 입력해두세요.
+//
+// =============================================
+
+var BarTimer = BarTimer || (function () {
+ 
+  var timers = {};
+ 
+  // ── 토큰 이름으로 검색 ─────────────────────────────────
+  function findTokenByName(name) {
+    var activePage = Campaign().get('playerpageid');
+    if (activePage) {
+      var tokens = findObjs({ _type: 'graphic', _pageid: activePage, name: name });
+      if (tokens.length > 0) return tokens[0];
+    }
+    var allTokens = findObjs({ _type: 'graphic', name: name });
+    return allTokens.length > 0 ? allTokens[0] : null;
+  }
+ 
+  // ── 바 값 설정 ─────────────────────────────────────────
+  function setBar(token, barNum, value, max) {
+    var obj = {};
+    obj['bar' + barNum + '_value'] = value;
+    obj['bar' + barNum + '_max']   = max;
+    token.set(obj);
+  }
+ 
+  // ── 타이머 ID 생성 (토큰이름+바번호로 고정) ────────────
+  function makeId(tokenName, barNum) {
+    return tokenName + '_bar' + barNum;
+  }
+ 
+  // ── 타이머 시작 ────────────────────────────────────────
+  function startTimer(who, args) {
+    var parts = args.split('|');
+    if (parts.length < 3) {
+      sendChat('BarTimer', '/w ' + who
+        + ' ⚠️ 형식: !bartimer start 토큰이름|바번호|초간격|방향(up/down)|증감값|종료조건'
+        + ' — 방향·증감값·종료조건 생략 가능');
+      return;
+    }
+ 
+    var tokenName = parts[0].trim();
+    var barNum    = parseInt(parts[1].trim(), 10);
+    var interval  = parseInt(parts[2].trim(), 10);
+    var direction = parts[3] ? parts[3].trim().toLowerCase() : 'up';
+    var step      = parts[4] ? parseInt(parts[4].trim(), 10) : 1;
+    var limitRaw  = parts[5] ? parts[5].trim() : null;
+ 
+    // ── 종료조건 파싱 ─────────────────────────────────────
+    // limitRaw가 없으면 → max/0 도달 시 종료 (기본)
+    // limitRaw가 숫자t  → 횟수 종료
+    // limitRaw가 숫자s  → 시간(분) 종료
+    // limitRaw가 숫자   → 목표값 종료
+    var limitType  = 'default'; // 'default' | 'target' | 'count' | 'time'
+    var limitValue = null;
+ 
+    if (limitRaw !== null) {
+      if (/^\d+t$/i.test(limitRaw)) {
+        limitType  = 'count';
+        limitValue = parseInt(limitRaw, 10);
+      } else if (/^\d+s$/i.test(limitRaw)) {
+        limitType  = 'time';
+        limitValue = parseInt(limitRaw, 10) * 60; // 분 → 초 변환
+      } else if (/^-?\d+$/.test(limitRaw)) {
+        limitType  = 'target';
+        limitValue = parseInt(limitRaw, 10);
+      } else {
+        sendChat('BarTimer', '/w ' + who
+          + ' ⚠️ 종료조건 형식이 잘못되었습니다.'
+          + ' 숫자(목표값), 숫자t(횟수), 숫자s(분) 중 하나로 입력해주세요.'
+          + ' 예) 20 / 5t / 8s');
+        return;
+      }
+    }
+ 
+    // ── 유효성 검사 ──────────────────────────────────────
+    if (isNaN(barNum) || barNum < 1 || barNum > 4) {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 바 번호는 1, 2, 3, 4 중 하나여야 합니다.');
+      return;
+    }
+    if (isNaN(interval) || interval <= 0) {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 초간격은 1 이상의 정수여야 합니다.');
+      return;
+    }
+    if (direction !== 'up' && direction !== 'down') {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 방향은 up 또는 down이어야 합니다.');
+      return;
+    }
+    if (isNaN(step) || step <= 0) {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 증감값은 1 이상의 정수여야 합니다.');
+      return;
+    }
+    if (limitType === 'count' && limitValue <= 0) {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 횟수는 1 이상이어야 합니다.');
+      return;
+    }
+ 
+    var token = findTokenByName(tokenName);
+    if (!token) {
+      sendChat('BarTimer', '/w ' + who
+        + ' ⚠️ 토큰을 찾을 수 없습니다: **' + tokenName + '**'
+        + ' (토큰 이름이 정확한지 확인해주세요)');
+      return;
+    }
+ 
+    // ── 토큰 바에서 현재값·최대값 읽기 ───────────────────
+    var current = parseFloat(token.get('bar' + barNum + '_value'));
+    var maxVal  = parseFloat(token.get('bar' + barNum + '_max'));
+ 
+    if (isNaN(current) || isNaN(maxVal)) {
+      sendChat('BarTimer', '/w ' + who
+        + ' ⚠️ bar' + barNum + '의 값을 읽을 수 없습니다.'
+        + ' 토큰 설정에서 value와 max를 먼저 입력해주세요.');
+      return;
+    }
+    if (maxVal <= 0) {
+      sendChat('BarTimer', '/w ' + who
+        + ' ⚠️ bar' + barNum + '의 max값이 0 이하입니다.'
+        + ' 토큰 설정에서 max값을 먼저 설정해주세요.');
+      return;
+    }
+ 
+    // 목표값 유효성 검사
+    if (limitType === 'target') {
+      if (direction === 'up' && limitValue <= current) {
+        sendChat('BarTimer', '/w ' + who
+          + ' ⚠️ 목표값(' + limitValue + ')이 현재값(' + current + ')보다 커야 합니다. (up 방향)');
+        return;
+      }
+      if (direction === 'down' && limitValue >= current) {
+        sendChat('BarTimer', '/w ' + who
+          + ' ⚠️ 목표값(' + limitValue + ')이 현재값(' + current + ')보다 작아야 합니다. (down 방향)');
+        return;
+      }
+    }
+ 
+    // ── 기존 동일 타이머만 정리 ───────────────────────────
+    var id = makeId(tokenName, barNum);
+    if (timers[id]) {
+      clearInterval(timers[id].intervalId);
+      delete timers[id];
+    }
+ 
+    var paused    = false;
+    var totalSecs = 0;
+    var tickCount = 0;
+ 
+    // ── 예상 완료 시간 계산 ──────────────────────────────
+    var ticks;
+    if (limitType === 'count') {
+      ticks = limitValue;
+    } else if (limitType === 'time') {
+      ticks = Math.floor(limitValue / interval);
+    } else if (limitType === 'target') {
+      ticks = Math.ceil(Math.abs(current - limitValue) / step);
+    } else {
+      ticks = Math.ceil((direction === 'up' ? maxVal - current : current) / step);
+    }
+    var totalSecsExpected = limitType === 'time' ? limitValue : ticks * interval;
+    var mm = Math.floor(totalSecsExpected / 60);
+    var ss = totalSecsExpected % 60;
+    var durationStr = mm > 0 ? mm + '분 ' + ss + '초' : ss + '초';
+ 
+    // ── 종료조건 안내 문자열 ─────────────────────────────
+    var limitLabel;
+    if (limitType === 'count')        limitLabel = limitValue + '번 후 종료';
+    else if (limitType === 'time')    limitLabel = (limitValue / 60) + '분 후 종료';
+    else if (limitType === 'target')  limitLabel = limitValue + '에 도달 시 종료';
+    else                              limitLabel = (direction === 'up' ? maxVal : '0') + '에 도달 시 종료';
+ 
+    var dirLabel = direction === 'up' ? '+' + step : '-' + step;
+ 
+    sendChat('BarTimer', '/w ' + who
+      + ' ✅ 바 타이머 시작!'
+      + ' | 토큰: **' + tokenName + '**'
+      + ' | bar' + barNum + ': ' + current + ' / ' + maxVal
+      + ' | ' + interval + '초마다 ' + dirLabel
+      + ' | ' + limitLabel
+      + ' | 예상 완료: ' + durationStr);
+ 
+    var intervalId = setInterval(function () {
+      if (paused) return;
+ 
+      totalSecs++;
+ 
+      if (totalSecs % interval === 0) {
+        if (direction === 'up') {
+          current = Math.min(current + step, maxVal);
+        } else {
+          current = Math.max(current - step, 0);
+        }
+        tickCount++;
+ 
+        var t = findTokenByName(tokenName);
+        if (t) {
+          setBar(t, barNum, current, maxVal);
+          log('[BarTimer] ' + tokenName
+            + ' → bar' + barNum + ': ' + current + '/' + maxVal
+            + ' (tick: ' + tickCount + ', ' + totalSecs + '초 경과)');
+        }
+ 
+        // ── 종료 조건 판별 ──────────────────────────────
+        var done = false;
+        if (limitType === 'count') {
+          done = tickCount >= limitValue;
+        } else if (limitType === 'time') {
+          done = totalSecs >= limitValue;
+        } else if (limitType === 'target') {
+          done = (direction === 'up'   && current >= limitValue)
+              || (direction === 'down' && current <= limitValue);
+        } else {
+          done = (direction === 'up'   && current >= maxVal)
+              || (direction === 'down' && current <= 0);
+        }
+ 
+        if (done) {
+          sendChat('BarTimer',
+            '⏰ **' + tokenName + '** (bar' + barNum + ') 타이머 완료!'
+            + ' → ' + current + ' / ' + maxVal);
+          clearInterval(timers[id].intervalId);
+          delete timers[id];
+        }
+      }
+    }, 1000);
+ 
+    timers[id] = {
+      tokenName  : tokenName,
+      barNum     : barNum,
+      maxVal     : maxVal,
+      interval   : interval,
+      direction  : direction,
+      step       : step,
+      limitType  : limitType,
+      limitValue : limitValue,
+      current    : current,
+      tickCount  : tickCount,
+      totalSecs  : totalSecs,
+      intervalId : intervalId,
+      getPaused  : function () { return paused; },
+      setPaused  : function (v) { paused = v; }
+    };
+  }
+ 
+  // ── ID 파싱 (토큰이름|바번호 → id) ────────────────────
+  function parseId(who, args) {
+    if (!args) return null;
+    var parts = args.split('|');
+    if (parts.length < 2) {
+      sendChat('BarTimer', '/w ' + who + ' ⚠️ 형식: 토큰이름|바번호');
+      return undefined; // null과 구분: null=전체, undefined=오류
+    }
+    return makeId(parts[0].trim(), parseInt(parts[1].trim(), 10));
+  }
+ 
+  // ── 일시정지 ───────────────────────────────────────────
+  function pauseTimer(who, args) {
+    if (_.isEmpty(timers)) {
+      sendChat('BarTimer', '/w ' + who + ' 실행 중인 타이머가 없습니다.');
+      return;
+    }
+    if (args) {
+      var id = parseId(who, args);
+      if (id === undefined) return;
+      if (!timers[id]) { sendChat('BarTimer', '/w ' + who + ' ⚠️ 해당 타이머를 찾을 수 없습니다.'); return; }
+      timers[id].setPaused(true);
+      sendChat('BarTimer', '/w ' + who + ' ⏸️ **' + timers[id].tokenName + '** bar' + timers[id].barNum + ' 일시정지.');
+    } else {
+      _.each(timers, function (t) { t.setPaused(true); });
+      sendChat('BarTimer', '/w ' + who + ' ⏸️ 전체 타이머 일시정지.');
+    }
+  }
+ 
+  // ── 재개 ───────────────────────────────────────────────
+  function resumeTimer(who, args) {
+    if (_.isEmpty(timers)) {
+      sendChat('BarTimer', '/w ' + who + ' 실행 중인 타이머가 없습니다.');
+      return;
+    }
+    if (args) {
+      var id = parseId(who, args);
+      if (id === undefined) return;
+      if (!timers[id]) { sendChat('BarTimer', '/w ' + who + ' ⚠️ 해당 타이머를 찾을 수 없습니다.'); return; }
+      timers[id].setPaused(false);
+      sendChat('BarTimer', '/w ' + who + ' ▶️ **' + timers[id].tokenName + '** bar' + timers[id].barNum + ' 재개.');
+    } else {
+      _.each(timers, function (t) { t.setPaused(false); });
+      sendChat('BarTimer', '/w ' + who + ' ▶️ 전체 타이머 재개.');
+    }
+  }
+ 
+  // ── 중단 ───────────────────────────────────────────────
+  function stopTimer(who, args) {
+    if (_.isEmpty(timers)) {
+      sendChat('BarTimer', '/w ' + who + ' 실행 중인 타이머가 없습니다.');
+      return;
+    }
+    if (args) {
+      var id = parseId(who, args);
+      if (id === undefined) return;
+      if (!timers[id]) { sendChat('BarTimer', '/w ' + who + ' ⚠️ 해당 타이머를 찾을 수 없습니다.'); return; }
+      var name = timers[id].tokenName;
+      var bar  = timers[id].barNum;
+      clearInterval(timers[id].intervalId);
+      delete timers[id];
+      sendChat('BarTimer', '/w ' + who + ' 🛑 **' + name + '** bar' + bar + ' 중단.');
+    } else {
+      _.each(timers, function (t) { clearInterval(t.intervalId); });
+      timers = {};
+      sendChat('BarTimer', '/w ' + who + ' 🛑 전체 타이머 중단.');
+    }
+  }
+ 
+  // ── 상태 확인 ──────────────────────────────────────────
+  function statusTimer(who, args) {
+    if (_.isEmpty(timers)) {
+      sendChat('BarTimer', '/w ' + who + ' 실행 중인 타이머가 없습니다.');
+      return;
+    }
+ 
+    var targets;
+    if (args) {
+      var id = parseId(who, args);
+      if (id === undefined) return;
+      if (!timers[id]) { sendChat('BarTimer', '/w ' + who + ' ⚠️ 해당 타이머를 찾을 수 없습니다.'); return; }
+      targets = [timers[id]];
+    } else {
+      targets = _.values(timers);
+    }
+ 
+    _.each(targets, function (t) {
+      var state    = t.getPaused() ? '⏸️ 일시정지' : '▶️ 진행 중';
+      var pct      = Math.round((t.current / t.maxVal) * 100);
+      var dirLabel = t.direction === 'up' ? '▲ +' + t.step : '▼ -' + t.step;
+      var limitLabel;
+      if (t.limitType === 'count')
+        limitLabel = t.tickCount + ' / ' + t.limitValue + '번';
+      else if (t.limitType === 'time')
+        limitLabel = Math.floor(t.totalSecs / 60) + ' / ' + (t.limitValue / 60) + '분';
+      else if (t.limitType === 'target')
+        limitLabel = '목표: ' + t.limitValue;
+      else
+        limitLabel = t.direction === 'up' ? '목표: ' + t.maxVal : '목표: 0';
+ 
+      sendChat('BarTimer', '/w ' + who
+        + ' ' + state
+        + ' | **' + t.tokenName + '** bar' + t.barNum
+        + ' | ' + t.current + ' / ' + t.maxVal + ' (' + pct + '%)'
+        + ' | ' + dirLabel + '씩'
+        + ' | ' + limitLabel
+        + ' | 경과: ' + t.totalSecs + '초'
+        + ' | 간격: ' + t.interval + '초');
+    });
+  }
+ 
+  // ── 명령어 수신 ────────────────────────────────────────
+  on('chat:message', function (msg) {
+    if (msg.type !== 'api') return;
+    var raw = msg.content.trim();
+    if (!raw.startsWith('!bartimer')) return;
+ 
+    var who  = msg.who.replace(' (GM)', '').trim();
+    var rest = raw.replace('!bartimer', '').trim();
+ 
+    if (rest.startsWith('start ')) {
+      startTimer(who, rest.replace('start ', '').trim());
+    } else if (rest.startsWith('stop')) {
+      var stopArgs = rest.replace('stop', '').trim() || null;
+      stopTimer(who, stopArgs);
+    } else if (rest.startsWith('pause')) {
+      var pauseArgs = rest.replace('pause', '').trim() || null;
+      pauseTimer(who, pauseArgs);
+    } else if (rest.startsWith('resume')) {
+      var resumeArgs = rest.replace('resume', '').trim() || null;
+      resumeTimer(who, resumeArgs);
+    } else if (rest.startsWith('status')) {
+      var statusArgs = rest.replace('status', '').trim() || null;
+      statusTimer(who, statusArgs);
+    } else {
+      sendChat('BarTimer', '/w ' + who
+        + ' 📋 명령어: start 토큰이름|바번호|초간격|방향|증감값|종료조건'
+        + ' / stop [토큰|바] / pause [토큰|바] / resume [토큰|바] / status [토큰|바]');
+    }
+  });
+ 
+  return {};
+ 
+}());
