@@ -120,6 +120,8 @@
   .script-list{ list-style:none; margin:0; padding: 6px 8px 20px; }
   .script-item{
     display:block;
+    word-break: keep-all;
+    overflow-wrap: break-word;
     width:100%;
     text-align:left;
     background:none;
@@ -205,7 +207,7 @@
   }
 
   .desc-panel{
-    width: 340px;
+    width: 490px;
     flex-shrink:0;
     padding: 22px 24px;
     border-right: none;
@@ -223,11 +225,17 @@
     line-height: 1.75;
     color: var(--text);
     white-space: pre-wrap;
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
   .desc-body.empty{ color: var(--text-faint); font-style: italic; }
 
   .desc-actions{
-    margin-top: 16px;
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap: 6px;
+    margin-top: 14px;
   }
 
   .version-picker{
@@ -239,6 +247,8 @@
   .version-picker:empty{ display:none; margin:0; }
   .version-pill{
     font-family: var(--mono);
+    word-break: keep-all;
+    overflow-wrap: break-word;
     font-size: 12px;
     background: #fff;
     border: 1px solid var(--border);
