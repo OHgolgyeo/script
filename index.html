@@ -270,6 +270,12 @@
     color: #1a1216;
     white-space: pre-wrap;
   }
+  .desc-frame{
+    width: 100%;
+    border: none;
+    display: block;
+    min-height: 40px;
+  }
 
   .code-panel{
     flex:1;
@@ -501,27 +507,21 @@ function loadCodeInto(file, pillEl, pillGroup){
     .catch(err => { codeBodyEl.textContent = err.message; });
 }
 
-// index 내용을 "제목 한 줄 + 나머지 본문" 구조로 나눠서 렌더링
-function renderIndexDescription(content){
-  const trimmed = content.trim();
-  const lines = trimmed.split('\n');
-  const title = lines[0].trim();
-  const body = lines.slice(1).join('\n').trim();
-
+// 설명용 HTML 문서를 iframe에 그대로 렌더링 (직접 짠 스타일/구조를 그대로 살림)
+function renderHtmlDescription(htmlContent){
   descBodyEl.classList.remove('empty');
   descBodyEl.innerHTML = '';
 
-  const titleEl = document.createElement('div');
-  titleEl.className = 'desc-title';
-  titleEl.textContent = title;
-  descBodyEl.appendChild(titleEl);
-
-  if (body){
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'desc-text';
-    bodyEl.textContent = body;
-    descBodyEl.appendChild(bodyEl);
-  }
+  const iframe = document.createElement('iframe');
+  iframe.className = 'desc-frame';
+  iframe.srcdoc = htmlContent;
+  iframe.addEventListener('load', () => {
+    try {
+      const h = iframe.contentDocument.documentElement.scrollHeight;
+      iframe.style.height = h + 'px';
+    } catch (e) { /* 무시 */ }
+  });
+  descBodyEl.appendChild(iframe);
 }
 
 // 일반 스크립트 파일: 설명은 파일 자체의 헤더 주석에서, 코드는 파일 내용 그대로
@@ -564,22 +564,22 @@ function selectGroup(dirItem, btnEl){
 
   fetchFiles(dirItem.path)
     .then(files => {
-      const indexFile = files.find(f => /^index\.[a-z0-9]+$/i.test(f.name));
-      const versions = files.filter(f => f !== indexFile);
+      const descFile = files.find(f => /\.html?$/i.test(f.name));
+      const versions = files.filter(f => f !== descFile);
 
-      // 설명: index 파일 내용을 제목+본문 구조로 표시
-      if (indexFile){
-        fetch(indexFile.download_url)
+      // 설명: .html 문서를 그대로 렌더링
+      if (descFile){
+        fetch(descFile.download_url)
           .then(res => res.text())
-          .then(content => renderIndexDescription(content));
+          .then(content => renderHtmlDescription(content));
       } else {
-        descBodyEl.textContent = '이 폴더엔 index 파일이 없어요.';
+        descBodyEl.textContent = '이 폴더엔 설명용 .html 문서가 없어요.';
         descBodyEl.classList.add('empty');
       }
 
       // 버전 선택 버튼들
       if (versions.length === 0){
-        codeBodyEl.textContent = '이 폴더엔 index 말고 다른 파일이 없어요.';
+        codeBodyEl.textContent = '이 폴더엔 설명 문서 말고 다른 파일이 없어요.';
         return;
       }
       const pills = [];
