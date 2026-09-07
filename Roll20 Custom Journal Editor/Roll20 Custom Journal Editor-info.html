@@ -2,6 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
+
+<!--
+  https://posty.pe/p6hfvxsc
+-->
+<meta name="distribution-blog" content="https://example.com/배포-블로그-주소">
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap');
 
@@ -17,7 +23,7 @@
     font-family: 'Space Grotesk', 'IBM Plex Sans KR', sans-serif;
     font-size: 19px;
     font-weight: 700;
-    color: #d8558f;   /* 스크립트 도서관 포인트 핑크보다 살짝 진한 톤 */
+    color: #d8558f;
     margin: 0 0 12px;
   }
 
@@ -30,28 +36,13 @@
 
   ul, ol{
     margin: 0 0 12px;
-    padding-left: 0;
-    list-style: none;
+    padding-left: 20px;
   }
+
   li{
     font-size: 14px;
     line-height: 1.7;
     color: #000;
-  }
-
-  .checklist li{
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 6px;
-  }
-  .checklist input[입력="checkbox"]{
-    margin-top: 3px;
-    width: 15px;
-    height: 15px;
-    accent-color: #d8558f;
-    flex-shrink: 0;
-    cursor: 기본;
   }
 
   strong{ color: #d8558f; }
@@ -69,31 +60,13 @@
 
   <h2>Roll20 Custom Journal Editor</h2>
 
-  <p>이 스크립트는 Roll20서버를 사용하지 않고 기존 핸드아웃 편집기의 기능을 사용자의 브라우저에 한해 수정하기 때문에 서버에 영향을 주지 않습니다.<br>
+  <p>
+    이 스크립트는 Roll20서버를 사용하지 않고 기존 핸드아웃 편집기의 기능을 사용자의 브라우저에 한해 수정하기 때문에 서버에 영향을 주지 않습니다.<br>
 스타일 코드를 강제로 지우는 핸드아웃 속성을 우회하기 위해 폰트와 대표 이미지에만 API가 적용되어 있으며, 적용하려면 Roll20의 Pro를 구독해야 합니다.
-</p>
+  </p>
 
-  <ul class="checklist">
-    <li><input type="checkbox" data-file="Roll20 Custom Journal Editor.js"> <span><strong>무료 버전</strong> — 기본 저널 편집 기능</span></li>
-    <li><input type="checkbox" data-file="Roll20 Custom Journal Editor PRO.js"> <span><strong>PRO 버전</strong> — 폰트 변경, 미리보기 아이콘 숨기기 가능</span></li>
-  </ul>
-
-  <p></p>
-
-  <script>
-    // 체크박스를 누르면 그 data-file 값을 부모 페이지(script-archive.html)에 전달.
-    // 부모 쪽에서 이 메시지를 받아 같은 폴더 안의 그 파일을 찾아 코드 영역에 띄워줌.
-    document.querySelectorAll('.checklist input[type="checkbox"]').forEach(cb => {
-      cb.addEventListener('click', function(){
-        // 라디오처럼 하나만 선택되게: 클릭한 것만 켜고 나머지는 끔
-        document.querySelectorAll('.checklist input[type="checkbox"]').forEach(other => {
-          if (other !== this) other.checked = false;
-        });
-        this.checked = true;
-        parent.postMessage({ type: 'select-version', file: this.dataset.file }, '*');
-      });
-    });
-  </script>
+  <p>
+  </p>
 
 </body>
 </html>
