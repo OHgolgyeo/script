@@ -418,6 +418,22 @@ const copyBtn = document.getElementById('copyBtn');
 
 let activeItemEl = null;
 
+// 지금 열려있는 폴더의 버전 파일 목록/알약버튼 — 설명 문서(iframe) 안의
+// 체크박스가 postMessage로 신호를 보내면 여기서 파일을 찾아 로드함
+let currentVersions = [];
+let currentPills = [];
+
+window.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'select-version') return;
+  const file = currentVersions.find(f => f.name === event.data.file);
+  if (!file){
+    console.warn('설명 문서의 data-file과 일치하는 파일을 못 찾음:', event.data.file);
+    return;
+  }
+  const pillIdx = currentVersions.indexOf(file);
+  loadCodeInto(file, currentPills[pillIdx], currentPills);
+});
+
 // 폴더 하나(파일+폴더 전부)를 가져옴
 async function fetchEntries(path){
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`);
@@ -489,6 +505,8 @@ function resetViewer(title, linkText, linkHref){
   codeBodyEl.textContent = '';
   copyBtn.textContent = '복사';
   copyBtn.classList.remove('copied');
+  currentVersions = [];
+  currentPills = [];
 }
 
 function loadCodeInto(file, pillEl, pillGroup){
@@ -554,7 +572,7 @@ function selectScript(item, btnEl){
     });
 }
 
-// 폴더(그룹): index.* 파일을 설명으로, 나머지 파일들을 버전 선택지로 보여줌
+// 폴더(그룹): .html 문서를 설명으로, 나머지 파일들을 버전 선택지로 보여줌
 function selectGroup(dirItem, btnEl){
   if (activeItemEl) activeItemEl.classList.remove('active');
   btnEl.classList.add('active');
@@ -566,6 +584,7 @@ function selectGroup(dirItem, btnEl){
     .then(files => {
       const descFile = files.find(f => /\.html?$/i.test(f.name));
       const versions = files.filter(f => f !== descFile);
+      currentVersions = versions;
 
       // 설명: .html 문서를 그대로 렌더링
       if (descFile){
@@ -577,7 +596,7 @@ function selectGroup(dirItem, btnEl){
         descBodyEl.classList.add('empty');
       }
 
-      // 버전 선택 버튼들
+      // 버전 선택 버튼들 (설명 문서 안 체크박스를 안 쓰는 경우를 위한 대체 수단)
       if (versions.length === 0){
         codeBodyEl.textContent = '이 폴더엔 설명 문서 말고 다른 파일이 없어요.';
         return;
@@ -591,6 +610,7 @@ function selectGroup(dirItem, btnEl){
         pills.push(pill);
         versionPickerEl.appendChild(pill);
       });
+      currentPills = pills;
       // 첫 번째 버전을 기본으로 보여줌
       loadCodeInto(versions[0], pills[0], pills);
     })
