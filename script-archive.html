@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>오골계 스크립트 보관함</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #fffcfb;
+    --panel: #fff4f8;
+    --panel-raised: #ffe7f0;
+    --border: #f6d7e4;
+    --text: #40303a;
+    --text-muted: #a9879a;
+    --text-faint: #cdb0be;
+    --accent: #ef8fb8;
+    --accent-deep: #d8558f;
+    --accent-dim: #fbdcea;
+    --code-bg: #fdf6f9;
+    --sans: 'Space Grotesk', 'IBM Plex Sans KR', sans-serif;
+    --kr: 'IBM Plex Sans KR', 'Space Grotesk', sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--kr);
+    min-height:100vh;
+  }
+
+  a { color: var(--accent); }
+
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{
+    width: 300px;
+    flex-shrink:0;
+    border-right: 1px solid var(--border);
+    display:flex;
+    flex-direction:column;
+    background: var(--panel);
+    box-shadow: 2px 0 12px rgba(216, 85, 143, 0.05);
+  }
+
+  .brand{
+    padding: 22px 20px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-mark{
+    font-family: var(--sans);
+    font-weight:700;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+  .brand-mark span{ color: var(--accent); }
+  .brand-repo{
+    margin-top: 6px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    word-break: break-all;
+  }
+
+  .sidebar-status{
+    padding: 10px 20px;
+    font-size: 12.5px;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .categories{
+    flex:1;
+    overflow-y:auto;
+    padding: 8px 0 20px;
+  }
+
+  .category{ margin-top: 6px; }
+  .category-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 10px 20px 8px;
+    cursor:pointer;
+    user-select:none;
+  }
+  .category-title{
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .category-count{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .category-chevron{
+    font-size: 10px;
+    color: var(--text-faint);
+    transition: transform .15s ease;
+    margin-left: 8px;
+  }
+  .category.collapsed .category-chevron{ transform: rotate(-90deg); }
+  .category.collapsed .script-list{ display:none; }
+
+  .script-list{ list-style:none; margin:0; padding: 0 8px 6px; }
+  .script-item{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:none;
+    border:none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor:pointer;
+    line-height:1.4;
+    word-break: break-word;
+  }
+  .script-item:hover{ background: var(--panel-raised); }
+  .script-item.active{
+    background: var(--accent-dim);
+    color: var(--accent-deep);
+    font-weight: 600;
+  }
+
+  .empty-note{
+    padding: 8px 20px 4px;
+    font-size: 12px;
+    color: var(--text-faint);
+    font-style: italic;
+  }
+
+  /* ---------- Main ---------- */
+  .main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+
+  .welcome{
+    margin: auto;
+    text-align:center;
+    color: var(--text-muted);
+    max-width: 420px;
+    padding: 40px;
+  }
+  .welcome h1{
+    font-family: var(--sans);
+    color: var(--text);
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  .welcome p{ font-size: 14px; line-height:1.7; margin:0; }
+
+  .viewer{ display:none; flex-direction:column; flex:1; min-height:0; }
+  .viewer.visible{ display:flex; }
+
+  .viewer-header{
+    padding: 24px 32px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink:0;
+  }
+  .viewer-title{
+    font-family: var(--sans);
+    font-size: 21px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px;
+    word-break: break-word;
+  }
+  .viewer-path{
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-faint);
+  }
+  .viewer-path a{ text-decoration:none; }
+  .viewer-path a:hover{ text-decoration:underline; }
+
+  .desc-panel{
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink:0;
+    max-height: 32vh;
+    overflow-y:auto;
+  }
+  .desc-label{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight:600;
+    color: var(--text-faint);
+    margin-bottom: 8px;
+  }
+  .desc-body{
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre-wrap;
+  }
+  .desc-body.empty{ color: var(--text-faint); font-style: italic; }
+
+  .code-panel{
+    flex:1;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+  }
+  .code-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 10px 32px;
+    flex-shrink:0;
+  }
+  .code-label{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight:600;
+    color: var(--text-faint);
+  }
+  .copy-btn{
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor:pointer;
+  }
+  .copy-btn:hover{ color: var(--accent-deep); border-color: var(--accent); }
+  .copy-btn.copied{ color: #fff; background: var(--accent); border-color: var(--accent); }
+
+  .code-scroll{
+    flex:1;
+    overflow:auto;
+    background: var(--code-bg);
+    margin: 0 32px 24px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 2px 10px rgba(216, 85, 143, 0.06);
+  }
+  .code-scroll pre{
+    margin:0;
+    padding: 18px 20px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #4a3a44;
+    white-space: pre;
+  }
+
+  .loading, .error{
+    padding: 32px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+  }
+  .error{ color: #c9455a; }
+
+  ::-webkit-scrollbar{ width: 10px; height:10px; }
+  ::-webkit-scrollbar-track{ background: transparent; }
+  ::-webkit-scrollbar-thumb{ background: var(--border); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover{ background: var(--accent-dim); }
+
+  @media (max-width: 760px){
+    .app{ flex-direction:column; }
+    .sidebar{ width:100%; max-height: 40vh; border-right:none; border-bottom:1px solid var(--border); }
+    .viewer-header, .desc-panel, .code-toolbar{ padding-left:18px; padding-right:18px; }
+    .code-scroll{ margin-left:18px; margin-right:18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">오골계 <span>스크립트 보관함</span></div>
+      <div class="brand-repo" id="repoLabel">github.com/OHgolgyeo/script</div>
+    </div>
+    <div class="sidebar-status" id="status">불러오는 중…</div>
+    <nav class="categories" id="categories"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="welcome" id="welcome">
+      <h1>왼쪽에서 스크립트를 선택하세요</h1>
+      <p>깃허브 저장소의 폴더를 스캔해서 목록을 만들었어요. 하나를 클릭하면 설명과 코드가 여기 나뉘어서 나타나요.</p>
+    </div>
+
+    <div class="viewer" id="viewer">
+      <div class="viewer-header">
+        <h2 class="viewer-title" id="scriptTitle"></h2>
+        <div class="viewer-path"><a id="scriptLink" href="#" target="_blank" rel="noopener"></a></div>
+      </div>
+      <div class="desc-panel">
+        <div class="desc-label">설명</div>
+        <div class="desc-body" id="descBody"></div>
+      </div>
+      <div class="code-panel">
+        <div class="code-toolbar">
+          <div class="code-label">코드</div>
+          <button class="copy-btn" id="copyBtn">복사</button>
+        </div>
+        <div class="code-scroll">
+          <pre id="codeBody"></pre>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const REPO = 'OHgolgyeo/script';
+const CATEGORIES = [
+  { key: 'mod-scripts', label: '롤20 모드(API) 스크립트' },
+  { key: 'tampermonkey-scripts', label: '템퍼몽키 스크립트' }
+];
+
+const statusEl = document.getElementById('status');
+const categoriesEl = document.getElementById('categories');
+const welcomeEl = document.getElementById('welcome');
+const viewerEl = document.getElementById('viewer');
+const scriptTitleEl = document.getElementById('scriptTitle');
+const scriptLinkEl = document.getElementById('scriptLink');
+const descBodyEl = document.getElementById('descBody');
+const codeBodyEl = document.getElementById('codeBody');
+const copyBtn = document.getElementById('copyBtn');
+
+let activeItemEl = null;
+
+async function fetchFolder(path){
+  const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`);
+  if (!res.ok){
+    if (res.status === 404) return [];
+    throw new Error(`${path} 목록을 가져오지 못함 (${res.status})`);
+  }
+  const data = await res.json();
+  return data.filter(item => item.type === 'file');
+}
+
+function extractDescription(content, filename){
+  const trimmed = content.trimStart();
+
+  // 템퍼몽키 스타일: ==UserScript== 메타 블록에서 @description 추출
+  if (trimmed.startsWith('// ==UserScript==')){
+    const block = trimmed.split('==/UserScript==')[0];
+    const descMatch = block.match(/@description\s+(.+)/);
+    const nameMatch = block.match(/@name\s+(.+)/);
+    const lines = [];
+    if (nameMatch) lines.push(nameMatch[1].trim());
+    if (descMatch) lines.push(descMatch[1].trim());
+    if (lines.length) return lines.join('\n');
+  }
+
+  // 일반 스타일: 맨 위 /** ... */ 블록 통째로 사용
+  const blockMatch = trimmed.match(/^\/\*\*([\s\S]*?)\*\//);
+  if (blockMatch){
+    return blockMatch[1]
+      .split('\n')
+      .map(line => line.replace(/^\s*\*\s?/, ''))
+      .join('\n')
+      .trim();
+  }
+
+  // 그것도 없으면 맨 위 연속된 // 줄들을 사용
+  const lines = trimmed.split('\n');
+  const commentLines = [];
+  for (const line of lines){
+    if (line.trim().startsWith('//')){
+      commentLines.push(line.trim().replace(/^\/\/\s?/, ''));
+    } else if (commentLines.length){
+      break;
+    } else if (line.trim() === ''){
+      continue;
+    } else {
+      break;
+    }
+  }
+  return commentLines.join('\n').trim();
+}
+
+function selectScript(item, btnEl){
+  if (activeItemEl) activeItemEl.classList.remove('active');
+  btnEl.classList.add('active');
+  activeItemEl = btnEl;
+
+  welcomeEl.style.display = 'none';
+  viewerEl.classList.add('visible');
+
+  scriptTitleEl.textContent = item.name;
+  scriptLinkEl.textContent = item.path;
+  scriptLinkEl.href = item.html_url;
+  descBodyEl.textContent = '불러오는 중…';
+  descBodyEl.classList.remove('empty');
+  codeBodyEl.textContent = '';
+  copyBtn.textContent = '복사';
+  copyBtn.classList.remove('copied');
+
+  fetch(item.download_url)
+    .then(res => {
+      if (!res.ok) throw new Error(`파일을 가져오지 못함 (${res.status})`);
+      return res.text();
+    })
+    .then(content => {
+      const desc = extractDescription(content, item.name);
+      if (desc){
+        descBodyEl.textContent = desc;
+        descBodyEl.classList.remove('empty');
+      } else {
+        descBodyEl.textContent = '이 스크립트엔 설명 주석이 없어요.';
+        descBodyEl.classList.add('empty');
+      }
+      codeBodyEl.textContent = content;
+    })
+    .catch(err => {
+      descBodyEl.textContent = err.message;
+      descBodyEl.classList.add('empty');
+    });
+}
+
+copyBtn.addEventListener('click', () => {
+  const text = codeBodyEl.textContent;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    copyBtn.textContent = '복사됨';
+    copyBtn.classList.add('copied');
+    setTimeout(() => {
+      copyBtn.textContent = '복사';
+      copyBtn.classList.remove('copied');
+    }, 1500);
+  });
+});
+
+function renderCategory(cat, files){
+  const wrap = document.createElement('div');
+  wrap.className = 'category';
+
+  const head = document.createElement('div');
+  head.className = 'category-head';
+  head.innerHTML = `
+    <span class="category-title">${cat.label}</span>
+    <span style="display:flex;align-items:center;">
+      <span class="category-count">${files.length}</span>
+      <span class="category-chevron">▾</span>
+    </span>
+  `;
+  head.addEventListener('click', () => wrap.classList.toggle('collapsed'));
+  wrap.appendChild(head);
+
+  if (files.length === 0){
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.textContent = '이 폴더엔 아직 파일이 없어요.';
+    wrap.appendChild(note);
+    return wrap;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'script-list';
+  files.forEach(item => {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.className = 'script-item';
+    btn.textContent = item.name.replace(/\.(js|user\.js)$/i, '');
+    btn.addEventListener('click', () => selectScript(item, btn));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+  wrap.appendChild(list);
+
+  return wrap;
+}
+
+async function init(){
+  try {
+    let total = 0;
+    for (const cat of CATEGORIES){
+      const files = await fetchFolder(cat.key);
+      total += files.length;
+      categoriesEl.appendChild(renderCategory(cat, files));
+    }
+    statusEl.textContent = `스크립트 ${total}개 로드됨`;
+  } catch (err){
+    statusEl.textContent = '';
+    const errEl = document.createElement('div');
+    errEl.className = 'error';
+    errEl.textContent = `목록을 가져오는 중 오류: ${err.message}`;
+    categoriesEl.appendChild(errEl);
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
