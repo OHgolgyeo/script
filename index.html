@@ -176,7 +176,7 @@
 
   .viewer-header{
     padding: 24px 32px 18px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: none;
     flex-shrink:0;
   }
   .viewer-title{
@@ -186,11 +186,13 @@
     color: var(--text);
     margin: 0 0 4px;
     word-break: break-word;
+    visibility: hidden;
   }
   .viewer-path{
     font-family: var(--mono);
     font-size: 12px;
     color: var(--text-faint);
+    visibility: hidden;
   }
   .viewer-path a{ text-decoration:none; }
   .viewer-path a:hover{ text-decoration:underline; }
@@ -206,7 +208,7 @@
     width: 340px;
     flex-shrink:0;
     padding: 22px 24px;
-    border-right: 1px solid var(--border);
+    border-right: none;
     overflow-y:auto;
   }
   .desc-label{
@@ -224,11 +226,15 @@
   }
   .desc-body.empty{ color: var(--text-faint); font-style: italic; }
 
+  .desc-actions{
+    margin-top: 16px;
+  }
+
   .version-picker{
     display:flex;
     flex-wrap:wrap;
     gap: 6px;
-    margin-bottom: 14px;
+    margin: 0;
   }
   .version-picker:empty{ display:none; margin:0; }
   .version-pill{
@@ -264,7 +270,10 @@
     text-decoration:none;
     white-space:nowrap;
   }
-  .blog-link.visible{ display:inline-flex; }
+  .blog-link.visible{
+    display:inline-flex;
+    margin-top: 14px;
+  }
   .blog-link:hover{ border-color: var(--accent); background: var(--accent-dim); }
 
   .desc-title{
@@ -296,7 +305,8 @@
   .code-toolbar{
     display:flex;
     align-items:center;
-    justify-content:space-between;
+    justify-content:flex-start;
+    gap: 15px;
     padding: 16px 24px 10px;
     flex-shrink:0;
   }
@@ -388,13 +398,12 @@
       </div>
       <div class="viewer-body">
         <div class="desc-panel">
-          <div class="desc-label">설명</div>
+          <div class="version-path" id="versionPath"></div>
+          <div class="desc-body" id="descBody"></div>
           <div class="desc-actions">
             <div class="version-picker" id="versionPicker"></div>
             <a class="blog-link" id="blogLink" href="#" target="_blank" rel="noopener">배포 블로그</a>
           </div>
-          <div class="version-path" id="versionPath"></div>
-          <div class="desc-body" id="descBody"></div>
         </div>
         <div class="code-panel">
           <div class="code-toolbar">
