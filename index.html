@@ -117,7 +117,7 @@
   .category.collapsed .category-chevron{ transform: rotate(-90deg); }
   .category.collapsed .script-list{ display:none; }
 
-  .script-list{ list-style:none; margin:0; padding: 0 8px 6px; }
+  .script-list{ list-style:none; margin:0; padding: 6px 8px 20px; }
   .script-item{
     display:block;
     width:100%;
@@ -367,8 +367,8 @@
 
   <main class="main">
     <div class="welcome" id="welcome">
-      <h1>왼쪽에서 스크립트를 선택하세요</h1>
-      <p>깃허브 저장소의 폴더를 스캔해서 목록을 만들었어요. 하나를 클릭하면 설명과 코드가 여기 나뉘어서 나타나요.</p>
+      <h1>왼쪽에서 프로젝트를 선택하세요</h1>
+      <p>깃허브 저장소의 루트 폴더를 프로젝트 목록으로 불러옵니다. 프로젝트를 클릭하면 설명과 선택한 스크립트 코드가 여기 나타나요.</p>
     </div>
 
     <div class="viewer" id="viewer">
@@ -399,10 +399,8 @@
 
 <script>
 const REPO = 'OHgolgyeo/script';
-const CATEGORIES = [
-  { key: 'mod-scripts', label: '롤20 모드(API) 스크립트' },
-  { key: 'tampermonkey-scripts', label: '템퍼몽키 스크립트' }
-];
+// 저장소 루트의 각 폴더를 하나의 프로젝트 버튼으로 표시합니다.
+// 스크립트 종류(모드/API, Tampermonkey 등)는 별도 카테고리로 구분하지 않습니다.
 
 const statusEl = document.getElementById('status');
 const categoriesEl = document.getElementById('categories');
@@ -572,7 +570,7 @@ function selectScript(item, btnEl){
     });
 }
 
-// 폴더(그룹): .html 문서를 설명으로, 나머지 파일들을 버전 선택지로 보여줌
+// 프로젝트 폴더: (폴더명)-info.html을 설명으로, 나머지 파일들을 스크립트 선택지로 보여줌
 function selectGroup(dirItem, btnEl){
   if (activeItemEl) activeItemEl.classList.remove('active');
   btnEl.classList.add('active');
@@ -582,7 +580,13 @@ function selectGroup(dirItem, btnEl){
 
   fetchFiles(dirItem.path)
     .then(files => {
-      const descFile = files.find(f => /\.html?$/i.test(f.name));
+      // 설명 파일 찾기: "(폴더이름)-info.html" 우선, 없으면 "(폴더이름).html",
+      // 그것도 없으면 폴더 안의 아무 .html 파일이나 사용
+      const folderName = dirItem.name;
+      const descFile =
+        files.find(f => f.name.toLowerCase() === `${folderName.toLowerCase()}-info.html`) ||
+        files.find(f => f.name.toLowerCase() === `${folderName.toLowerCase()}.html`) ||
+        files.find(f => /\.html?$/i.test(f.name));
       const versions = files.filter(f => f !== descFile);
       currentVersions = versions;
 
@@ -633,57 +637,38 @@ copyBtn.addEventListener('click', () => {
   });
 });
 
-function renderCategory(cat, entries){
-  const wrap = document.createElement('div');
-  wrap.className = 'category';
-
-  const head = document.createElement('div');
-  head.className = 'category-head';
-  head.innerHTML = `
-    <span class="category-title">${cat.label}</span>
-    <span style="display:flex;align-items:center;">
-      <span class="category-count">${entries.length}</span>
-      <span class="category-chevron">▾</span>
-    </span>
-  `;
-  head.addEventListener('click', () => wrap.classList.toggle('collapsed'));
-  wrap.appendChild(head);
-
-  if (entries.length === 0){
-    const note = document.createElement('div');
-    note.className = 'empty-note';
-    note.textContent = '이 폴더엔 아직 파일이 없어요.';
-    wrap.appendChild(note);
-    return wrap;
-  }
-
-  const list = document.createElement('ul');
-  list.className = 'script-list';
-  entries.forEach(item => {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.className = 'script-item';
-    if (item.type === 'dir'){
-      btn.textContent = item.name;
-      btn.addEventListener('click', () => selectGroup(item, btn));
-    } else {
-      btn.textContent = item.name.replace(/\.(js|user\.js)$/i, '');
-      btn.addEventListener('click', () => selectScript(item, btn));
-    }
-    li.appendChild(btn);
-    list.appendChild(li);
-  });
-  wrap.appendChild(list);
-
-  return wrap;
+function renderProjectButton(folder){
+  const btn = document.createElement('button');
+  btn.className = 'script-item';
+  btn.textContent = folder.name;
+  btn.addEventListener('click', () => selectGroup(folder, btn));
+  return btn;
 }
 
 async function init(){
   try {
-    for (const cat of CATEGORIES){
-      const entries = await fetchEntries(cat.key);
-      categoriesEl.appendChild(renderCategory(cat, entries));
+    const rootEntries = await fetchEntries('');
+    const rootFolders = rootEntries.filter(item => item.type === 'dir');
+
+    if (rootFolders.length === 0){
+      const note = document.createElement('div');
+      note.className = 'empty-note';
+      note.textContent = '저장소 루트에 표시할 프로젝트 폴더가 없어요.';
+      categoriesEl.appendChild(note);
+      return;
     }
+
+    const list = document.createElement('ul');
+    list.className = 'script-list';
+
+    rootFolders.forEach(folder => {
+      const li = document.createElement('li');
+      li.appendChild(renderProjectButton(folder));
+      list.appendChild(li);
+    });
+
+    categoriesEl.appendChild(list);
+    statusEl.textContent = `프로젝트 ${rootFolders.length}개`;
   } catch (err){
     const errEl = document.createElement('div');
     errEl.className = 'error';
