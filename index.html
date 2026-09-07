@@ -80,7 +80,6 @@
     padding: 10px 20px;
     font-size: 12.5px;
     color: var(--text-faint);
-    border-bottom: 1px solid var(--border);
   }
 
   .categories{
@@ -225,6 +224,53 @@
   }
   .desc-body.empty{ color: var(--text-faint); font-style: italic; }
 
+  .version-picker{
+    display:flex;
+    flex-wrap:wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .version-picker:empty{ display:none; margin:0; }
+  .version-pill{
+    font-family: var(--mono);
+    font-size: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 5px 12px;
+    border-radius: 999px;
+    cursor:pointer;
+  }
+  .version-pill:hover{ border-color: var(--accent); color: var(--accent-deep); }
+  .version-pill.active{
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  .version-path{
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    margin: -6px 0 16px;
+    word-break: break-all;
+  }
+  .version-path:empty{ display:none; margin:0; }
+
+  .desc-title{
+    font-family: var(--sans);
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--accent-deep);
+    margin: 0 0 10px;
+  }
+  .desc-text{
+    font-size: 14px;
+    line-height: 1.75;
+    color: #1a1216;
+    white-space: pre-wrap;
+  }
+
   .code-panel{
     flex:1;
     min-width:0;
@@ -309,7 +355,7 @@
       <div class="brand-mark">🐧오골계 <span>스크립트 도서관</span></div>
       <div class="brand-repo" id="repoLabel">github.com/OHgolgyeo/script</div>
     </div>
-    <div class="sidebar-status" id="status">불러오는 중…</div>
+    <div class="sidebar-status" id="status"></div>
     <nav class="categories" id="categories"></nav>
   </aside>
 
@@ -327,6 +373,8 @@
       <div class="viewer-body">
         <div class="desc-panel">
           <div class="desc-label">설명</div>
+          <div class="version-picker" id="versionPicker"></div>
+          <div class="version-path" id="versionPath"></div>
           <div class="desc-body" id="descBody"></div>
         </div>
         <div class="code-panel">
@@ -356,20 +404,28 @@ const welcomeEl = document.getElementById('welcome');
 const viewerEl = document.getElementById('viewer');
 const scriptTitleEl = document.getElementById('scriptTitle');
 const scriptLinkEl = document.getElementById('scriptLink');
+const versionPickerEl = document.getElementById('versionPicker');
+const versionPathEl = document.getElementById('versionPath');
 const descBodyEl = document.getElementById('descBody');
 const codeBodyEl = document.getElementById('codeBody');
 const copyBtn = document.getElementById('copyBtn');
 
 let activeItemEl = null;
 
-async function fetchFolder(path){
+// 폴더 하나(파일+폴더 전부)를 가져옴
+async function fetchEntries(path){
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`);
   if (!res.ok){
     if (res.status === 404) return [];
     throw new Error(`${path} 목록을 가져오지 못함 (${res.status})`);
   }
-  const data = await res.json();
-  return data.filter(item => item.type === 'file');
+  return await res.json();
+}
+
+// 폴더 안의 파일만 가져옴 (하위 폴더는 무시)
+async function fetchFiles(path){
+  const entries = await fetchEntries(path);
+  return entries.filter(item => item.type === 'file');
 }
 
 function extractDescription(content, filename){
@@ -413,22 +469,68 @@ function extractDescription(content, filename){
   return commentLines.join('\n').trim();
 }
 
-function selectScript(item, btnEl){
-  if (activeItemEl) activeItemEl.classList.remove('active');
-  btnEl.classList.add('active');
-  activeItemEl = btnEl;
-
+function resetViewer(title, linkText, linkHref){
   welcomeEl.style.display = 'none';
   viewerEl.classList.add('visible');
 
-  scriptTitleEl.textContent = item.name;
-  scriptLinkEl.textContent = item.path;
-  scriptLinkEl.href = item.html_url;
+  scriptTitleEl.textContent = title;
+  scriptLinkEl.textContent = linkText;
+  scriptLinkEl.href = linkHref;
+  versionPickerEl.innerHTML = '';
+  versionPathEl.innerHTML = '';
   descBodyEl.textContent = '불러오는 중…';
   descBodyEl.classList.remove('empty');
   codeBodyEl.textContent = '';
   copyBtn.textContent = '복사';
   copyBtn.classList.remove('copied');
+}
+
+function loadCodeInto(file, pillEl, pillGroup){
+  if (pillGroup){
+    pillGroup.forEach(p => p.classList.remove('active'));
+    if (pillEl) pillEl.classList.add('active');
+  }
+  versionPathEl.innerHTML = `<a href="${file.html_url}" target="_blank" rel="noopener">${file.path}</a>`;
+  codeBodyEl.textContent = '불러오는 중…';
+  fetch(file.download_url)
+    .then(res => {
+      if (!res.ok) throw new Error(`파일을 가져오지 못함 (${res.status})`);
+      return res.text();
+    })
+    .then(content => { codeBodyEl.textContent = content; })
+    .catch(err => { codeBodyEl.textContent = err.message; });
+}
+
+// index 내용을 "제목 한 줄 + 나머지 본문" 구조로 나눠서 렌더링
+function renderIndexDescription(content){
+  const trimmed = content.trim();
+  const lines = trimmed.split('\n');
+  const title = lines[0].trim();
+  const body = lines.slice(1).join('\n').trim();
+
+  descBodyEl.classList.remove('empty');
+  descBodyEl.innerHTML = '';
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'desc-title';
+  titleEl.textContent = title;
+  descBodyEl.appendChild(titleEl);
+
+  if (body){
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'desc-text';
+    bodyEl.textContent = body;
+    descBodyEl.appendChild(bodyEl);
+  }
+}
+
+// 일반 스크립트 파일: 설명은 파일 자체의 헤더 주석에서, 코드는 파일 내용 그대로
+function selectScript(item, btnEl){
+  if (activeItemEl) activeItemEl.classList.remove('active');
+  btnEl.classList.add('active');
+  activeItemEl = btnEl;
+
+  resetViewer(item.name, item.path, item.html_url);
 
   fetch(item.download_url)
     .then(res => {
@@ -452,6 +554,52 @@ function selectScript(item, btnEl){
     });
 }
 
+// 폴더(그룹): index.* 파일을 설명으로, 나머지 파일들을 버전 선택지로 보여줌
+function selectGroup(dirItem, btnEl){
+  if (activeItemEl) activeItemEl.classList.remove('active');
+  btnEl.classList.add('active');
+  activeItemEl = btnEl;
+
+  resetViewer(dirItem.name, dirItem.path, dirItem.html_url);
+
+  fetchFiles(dirItem.path)
+    .then(files => {
+      const indexFile = files.find(f => /^index\.[a-z0-9]+$/i.test(f.name));
+      const versions = files.filter(f => f !== indexFile);
+
+      // 설명: index 파일 내용을 제목+본문 구조로 표시
+      if (indexFile){
+        fetch(indexFile.download_url)
+          .then(res => res.text())
+          .then(content => renderIndexDescription(content));
+      } else {
+        descBodyEl.textContent = '이 폴더엔 index 파일이 없어요.';
+        descBodyEl.classList.add('empty');
+      }
+
+      // 버전 선택 버튼들
+      if (versions.length === 0){
+        codeBodyEl.textContent = '이 폴더엔 index 말고 다른 파일이 없어요.';
+        return;
+      }
+      const pills = [];
+      versions.forEach((file, idx) => {
+        const pill = document.createElement('button');
+        pill.className = 'version-pill';
+        pill.textContent = file.name.replace(/\.(js|user\.js)$/i, '');
+        pill.addEventListener('click', () => loadCodeInto(file, pill, pills));
+        pills.push(pill);
+        versionPickerEl.appendChild(pill);
+      });
+      // 첫 번째 버전을 기본으로 보여줌
+      loadCodeInto(versions[0], pills[0], pills);
+    })
+    .catch(err => {
+      descBodyEl.textContent = err.message;
+      descBodyEl.classList.add('empty');
+    });
+}
+
 copyBtn.addEventListener('click', () => {
   const text = codeBodyEl.textContent;
   if (!text) return;
@@ -465,7 +613,7 @@ copyBtn.addEventListener('click', () => {
   });
 });
 
-function renderCategory(cat, files){
+function renderCategory(cat, entries){
   const wrap = document.createElement('div');
   wrap.className = 'category';
 
@@ -474,14 +622,14 @@ function renderCategory(cat, files){
   head.innerHTML = `
     <span class="category-title">${cat.label}</span>
     <span style="display:flex;align-items:center;">
-      <span class="category-count">${files.length}</span>
+      <span class="category-count">${entries.length}</span>
       <span class="category-chevron">▾</span>
     </span>
   `;
   head.addEventListener('click', () => wrap.classList.toggle('collapsed'));
   wrap.appendChild(head);
 
-  if (files.length === 0){
+  if (entries.length === 0){
     const note = document.createElement('div');
     note.className = 'empty-note';
     note.textContent = '이 폴더엔 아직 파일이 없어요.';
@@ -491,12 +639,17 @@ function renderCategory(cat, files){
 
   const list = document.createElement('ul');
   list.className = 'script-list';
-  files.forEach(item => {
+  entries.forEach(item => {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.className = 'script-item';
-    btn.textContent = item.name.replace(/\.(js|user\.js)$/i, '');
-    btn.addEventListener('click', () => selectScript(item, btn));
+    if (item.type === 'dir'){
+      btn.textContent = item.name;
+      btn.addEventListener('click', () => selectGroup(item, btn));
+    } else {
+      btn.textContent = item.name.replace(/\.(js|user\.js)$/i, '');
+      btn.addEventListener('click', () => selectScript(item, btn));
+    }
     li.appendChild(btn);
     list.appendChild(li);
   });
@@ -507,21 +660,18 @@ function renderCategory(cat, files){
 
 async function init(){
   try {
-    let total = 0;
     for (const cat of CATEGORIES){
-      const files = await fetchFolder(cat.key);
-      total += files.length;
-      categoriesEl.appendChild(renderCategory(cat, files));
+      const entries = await fetchEntries(cat.key);
+      categoriesEl.appendChild(renderCategory(cat, entries));
     }
-    statusEl.textContent = `스크립트 ${total}개 로드됨`;
   } catch (err){
-    statusEl.textContent = '';
     const errEl = document.createElement('div');
     errEl.className = 'error';
     errEl.textContent = `목록을 가져오는 중 오류: ${err.message}`;
     categoriesEl.appendChild(errEl);
   }
 }
+
 
 init();
 </script>
