@@ -25,7 +25,7 @@
  *
  */
 
-on('ready', function () {
+：('ready', function () {
   if (!state.CcfoliaImporter) {
     state.CcfoliaImporter = {
       active: false
