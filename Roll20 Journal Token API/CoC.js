@@ -1,5 +1,5 @@
 /**
- * Ccfolia Token - CoC
+ * Roll20 Journal Token API - CoC
  * -----------------------------------------------------------
  *
  * ⚠ 중요
@@ -23,7 +23,7 @@
  *
  */
 
-：('ready', function () {
+on('ready', function () {
   if (!state.CcfoliaImporter) {
     state.CcfoliaImporter = {
       active: false
@@ -35,7 +35,6 @@
 // =============================================================
 // 유틸리티
 // =============================================================
-
 function stripRichText(raw) {
   if (!raw) return '';
   var text = decodeURIComponent(raw);
@@ -61,7 +60,6 @@ function safeParseJSON(text) {
 function setAttr(characterId, name, value) {
   var existing = findObjs({ _type: 'attribute', _characterid: characterId, name: name });
   var obj;
-
   if (existing.length > 1) {
     obj = existing[0];
     for (var i = 1; i < existing.length; i++) {
@@ -70,7 +68,6 @@ function setAttr(characterId, name, value) {
   } else if (existing.length === 1) {
     obj = existing[0];
   }
-
   if (obj) {
     obj.set('current', value);
   } else {
@@ -83,7 +80,6 @@ function setAttr(characterId, name, value) {
 // 라벨은 Roll20 공식 Call_of_Cthulhu_7th_Ed 시트의
 // translations/ko.json 기준으로 검증된 값입니다.
 // =============================================================
-
 var COC7_CHAR_MAP = {
   '근력': 'str',
   '건강': 'con',
@@ -111,8 +107,16 @@ var COC7_STATUS_MAP = {
   'MP': { current: 'mp' },
   'SAN': { current: 'san' },
   '이성': { current: 'san' },
-  '행운': { current: 'luck' }
+  '행운': { current: 'luck' },
+  '운': { current: 'luck' }
 };
+
+// status 라벨은 공백 오차만 허용하는 완전 일치 매칭을 사용합니다.
+// (문자열 부분매치가 아니므로 '운' 키가 다른 라벨을 잘못 먹을 일은 없습니다.)
+function lookupStatus(label) {
+  var trimmed = (label || '').trim();
+  return COC7_STATUS_MAP[trimmed] || null;
+}
 
 var COC7_SKILL_MAP = {
   '감정': 'appraise',
@@ -197,13 +201,13 @@ var COC7_CUSTOM_SKILL_SLOTS = [
 var COC7_WEAPON_SLOTS = ['weapon1', 'weapon2', 'weapon3'];
 
 var COC7_WEAPON_CATEGORIES = {
-  hth: 6,       // 근접(Hand-to-Hand)
-  hgun: 6,      // 권총(Handgun)
-  rifle: 6,     // 라이플(Rifle)
-  shotgun: 6,   // 샷건(Shotgun)
+  hth: 6, // 근접(Hand-to-Hand)
+  hgun: 6, // 권총(Handgun)
+  rifle: 6, // 라이플(Rifle)
+  shotgun: 6, // 샷건(Shotgun)
   automatic: 6, // 자동화기(Automatic)
-  explhv: 6,    // 폭발물/중화기(Explosive/Heavy)
-  misc: 8       // 기타(Miscellaneous)
+  explhv: 6, // 폭발물/중화기(Explosive/Heavy)
+  misc: 8 // 기타(Miscellaneous)
 };
 
 function guessWeaponCategory(name) {
@@ -219,7 +223,6 @@ var COC7_SKILL_TO_WEAPON_CATEGORY = {
 function categorizeBySkill(skillAttr) {
   return COC7_SKILL_TO_WEAPON_CATEGORY[skillAttr] || null;
 }
-
 
 var COC7_WEAPON_SKIP_NAMES = ['비무장', 'unarmed', 'Unarmed'];
 
@@ -269,11 +272,13 @@ function parseCoC7Commands(commandsText, paramLookup) {
         result.skills.push({ attr: lookupChar(label), value: value });
         return;
       }
+
       var mappedSkill = lookupSkill(label);
       if (mappedSkill) {
         result.skills.push({ attr: mappedSkill, value: value });
         return;
       }
+
       if (nextCustomSlot < COC7_CUSTOM_SKILL_SLOTS.length) {
         result.customSkills.push({
           attr: COC7_CUSTOM_SKILL_SLOTS[nextCustomSlot],
@@ -315,6 +320,7 @@ function parseCoC7Commands(commandsText, paramLookup) {
       var re = new RegExp('\\{' + koLabel + '\\}', 'g');
       abilityText = abilityText.replace(re, '@{' + attrName + '}');
     });
+
     _.each(COC7_STATUS_MAP, function (map, koLabel) {
       var re = new RegExp('\\{' + koLabel + '\\}', 'g');
       abilityText = abilityText.replace(re, '@{' + map.current + '}');
@@ -341,7 +347,6 @@ function parseCoC7Commands(commandsText, paramLookup) {
 // =============================================================
 // Core: 데이터 적용
 // =============================================================
-
 function applyCharacterData(character, jsonData) {
   if (!jsonData || jsonData.kind !== 'character' || !jsonData.data) {
     return;
@@ -351,9 +356,9 @@ function applyCharacterData(character, jsonData) {
   var attrsToSet = {}; // {attrName: value} - 전부 Attribute 객체로 만들 값들
   var weaponSlotCounter = {}; // 카테고리별로 이번 처리에서 몇 번째 슬롯까지 썼는지
 
-  // status (HP/MP/SAN/행운) — max 필드는 시트가 능력치로부터 자동 계산하므로 current만 반영
+  // status (HP/MP/SAN/행운·운) — max 필드는 시트가 능력치로부터 자동 계산하므로 current만 반영
   _.each(data.status || [], function (s) {
-    var map = COC7_STATUS_MAP[s.label];
+    var map = lookupStatus(s.label);
     if (!map) return;
     if (typeof s.value !== 'undefined') attrsToSet[map.current] = s.value;
   });
@@ -369,6 +374,7 @@ function applyCharacterData(character, jsonData) {
 
   // 이름은 Attribute가 아니라 Character 객체 자체의 속성이라 따로 처리
   if (data.name) character.set('name', data.name);
+
   if (typeof data.initiative !== 'undefined') attrsToSet['initiative'] = data.initiative;
 
   // commands (스킬/무기 등)
@@ -377,10 +383,12 @@ function applyCharacterData(character, jsonData) {
   _.each(parsed.skills, function (s) {
     attrsToSet[s.attr] = s.value;
   });
+
   _.each(parsed.customSkills, function (s) {
     attrsToSet[s.attr] = s.value;
     attrsToSet[s.attr + '_name'] = s.label; // 커스텀 슬롯 이름칸
   });
+
   _.each(parsed.weapons, function (w, idx) {
     if (idx < COC7_WEAPON_SLOTS.length) {
       var slot = COC7_WEAPON_SLOTS[idx];
@@ -392,9 +400,11 @@ function applyCharacterData(character, jsonData) {
     var category = w.category || guessWeaponCategory(w.name);
     var maxSlots = COC7_WEAPON_CATEGORIES[category];
     var used = weaponSlotCounter[category] || 0;
+
     if (used < maxSlots) {
       var slotNum = used + 1;
       var prefix = category + '_weapon' + slotNum;
+
       attrsToSet[prefix + '_name'] = w.name;
       attrsToSet[prefix + '_damage'] = w.damage;
       if (typeof w.skill !== 'undefined') attrsToSet[prefix + '_skill'] = w.skill;
@@ -407,6 +417,7 @@ function applyCharacterData(character, jsonData) {
         attrsToSet[prefix + '_ammo_max'] = w.ammo;
         attrsToSet[prefix + '_ammo_checkbox'] = 1;
       }
+
       weaponSlotCounter[category] = slotNum;
     }
   });
@@ -436,7 +447,6 @@ function applyCharacterData(character, jsonData) {
 // =============================================================
 // Core: 채팅 명령어 (!importstart / !importend)
 // =============================================================
-
 on('chat:message', function (msg) {
   if (msg.type !== 'api') return;
 
@@ -459,7 +469,6 @@ on('chat:message', function (msg) {
 // =============================================================
 // Core: bio 변경 감지 → 자동 적용
 // =============================================================
-
 on('change:character:bio', function (obj, prev) {
   if (!state.CcfoliaImporter.active) return;
 
