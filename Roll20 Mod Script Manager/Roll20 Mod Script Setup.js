@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Roll20 Mod Script Setup
+// @name         Roll20 Mod Script Manager
 // @namespace    https://github.com/OHgolgyeo/script
 // @version      1.0
 // @author       오골계 (https://x.com/5golgyeo)
