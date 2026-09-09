@@ -8,7 +8,8 @@
 -->
 <meta name="distribution-blog" content=" ">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&family=Press+Start+2P&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DotGothic16&display=swap');
 
   body{
     margin: 0;
@@ -107,9 +108,6 @@
     text-align: center; /* 롤20 /desc 메시지가 중앙 정렬로 표시됨 */
   }
 
-  .code-out{
-    position: relative;
-  }
   .code-out pre{
     background: #100e0a;
     color: #d8cfb8;
@@ -122,20 +120,6 @@
     white-space: pre-wrap;
     word-break: break-all;
   }
-  .copy-btn{
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-family: 'IBM Plex Sans KR', sans-serif;
-    font-size: 11px;
-    background: #d8558f;
-    color: #fff;
-    border: none;
-    border-radius: 999px;
-    padding: 4px 10px;
-    cursor: pointer;
-  }
-  .copy-btn.copied{ background: #4caf50; }
 </style>
 </head>
 <body>
@@ -143,9 +127,8 @@
   <h2>Roll20 Video Player</h2>
 
   <p>
-    Roll20에서 플레이어들에게 영상 자료를 전달할 수 있습니다.<br>
-    영상은 전체모드/맵모드/창모드로 볼 수 있고, 확장자가 포함된 외부 링크 뿐 아니라
-    유튜브, 구글 드라이브, 트위터 링크로 영상을 가져올 수 있습니다.<br>
+    Roll20에서 플레이어들에게 영상 자료를 전달할 수 있습니다.
+    영상은 전체모드/맵모드/창모드로 볼 수 있고, 확장자가 포함된 외부 링크와 유튜브, 구글 드라이브, 트위터 링크로 영상을 가져올 수 있습니다.<br>
     매크로에 <code>!컷 ?{영상 링크(확장자 포함)|}, ?{대기시간|}, ?{모드|full|map|window}, "?{저널이름|}"</code>를
     저장해두시면 사용하시기 편합니다.
   </p>
@@ -170,7 +153,7 @@
         폰트
         <select id="cFont">
           <option value="sans-serif">기본 sans-serif</option>
-          <option value="'Press Start 2P', cursive">Press Start 2P</option>
+          <option value="'DotGothic16', sans-serif">DotGothic16</option>
           <option value="'IBM Plex Sans KR', sans-serif">IBM Plex Sans KR</option>
           <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
           <option value="monospace">고정폭(monospace)</option>
@@ -183,7 +166,6 @@
     </div>
 
     <div class="code-out">
-      <button class="copy-btn" id="copyBtn">복사</button>
       <pre id="codeOut"></pre>
     </div>
   </div>
@@ -195,7 +177,6 @@
   var fontInput = document.getElementById('cFont');
   var preview = document.getElementById('preview');
   var codeOut = document.getElementById('codeOut');
-  var copyBtn = document.getElementById('copyBtn');
 
   function update(){
     var bg = bgInput.value;
@@ -228,17 +209,6 @@
 
   [bgInput, textInput, sizeInput, fontInput].forEach(function(el){
     el.addEventListener('input', update);
-  });
-
-  copyBtn.addEventListener('click', function(){
-    navigator.clipboard.writeText(codeOut.textContent).then(function(){
-      copyBtn.textContent = '복사됨';
-      copyBtn.classList.add('copied');
-      setTimeout(function(){
-        copyBtn.textContent = '복사';
-        copyBtn.classList.remove('copied');
-      }, 1500);
-    });
   });
 
   update();
