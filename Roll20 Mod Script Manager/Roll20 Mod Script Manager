@@ -97,8 +97,7 @@ var Roll20ModScriptManager = Roll20ModScriptManager || (function () {
                     ? 'GM 입장이 감지되어 자동 호출했습니다.'
                     : '필요한 기능을 선택하세요.') +
             '</div>' +
-            button('1. 분석', ROOT + ' ui-analysis', '#3973a5') +
-            button('2. 분석 · 편집', ROOT + ' ui-edit', '#568b4b') +
+            button('분석', ROOT + ' ui-analysis', '#3973a5') +
             button('매크로 생성/갱신', ROOT + ' macro', '#7c5499') +
             '<hr>' +
             button('호출 종료', ROOT + ' auto off', '#a45b5b') +
