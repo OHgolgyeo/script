@@ -8,8 +8,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      cdn.syndication.twimg.com
 // @connect      video.twimg.com
-// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/main/tampermonkey-scripts/Roll20%20Video%20Player.user.js
-// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/main/tampermonkey-scripts/Roll20%20Video%20Player.user.js
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Video%20Player/Roll20%20Video%20Player%20Setting.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Video%20Player/Roll20%20Video%20Player%20Setting.js
 // ==/UserScript==
 
 (function () {
