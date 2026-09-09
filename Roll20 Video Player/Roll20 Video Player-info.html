@@ -207,7 +207,7 @@
     // display:inline-block을 씀 — 이건 코드 텍스트엔 안 들어감(원본 코드
     // 형식 그대로 유지). 나머지 값(패딩 등)은 실제 코드와 동일하게 맞춤.
     preview.style.display = 'inline-block';
-    preview.style.padding = '6px 100px';
+    preview.style.padding = '6px 90px';
     preview.style.background = bg;
     preview.style.borderRadius = '6px';
     preview.style.color = text;
@@ -230,6 +230,15 @@
     el.addEventListener('input', update);
   });
 
+  copyBtn.addEventListener('click', function(){
+    navigator.clipboard.writeText(codeOut.textContent).then(function(){
+      copyBtn.textContent = '복사됨';
+      copyBtn.classList.add('copied');
+      setTimeout(function(){
+        copyBtn.textContent = '복사';
+        copyBtn.classList.remove('copied');
+      }, 1500);
+    });
   });
 
   update();
