@@ -493,13 +493,42 @@ window.addEventListener('message', (event) => {
 });
 
 // 폴더 하나(파일+폴더 전부)를 가져옴
+// api.github.com 목록 조회는 시간당 60회 제한이 있어서, 짧은 시간 안에
+// 같은 경로를 반복 요청하면 403이 뜸. 브라우저에 잠깐(5분) 캐싱해서
+// 새로고침을 여러 번 해도 매번 다시 API를 안 부르게 함.
+const GH_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readGhCache(path){
+  try {
+    const raw = localStorage.getItem('gh-cache:' + path);
+    if (!raw) return null;
+    const { time, data } = JSON.parse(raw);
+    if (Date.now() - time > GH_CACHE_TTL_MS) return null;
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeGhCache(path, data){
+  try {
+    localStorage.setItem('gh-cache:' + path, JSON.stringify({ time: Date.now(), data }));
+  } catch (e) { /* 저장 공간 부족 등은 무시 — 캐싱 실패해도 API 호출로 정상 동작함 */ }
+}
+
 async function fetchEntries(path){
+  const cached = readGhCache(path);
+  if (cached) return cached;
+
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`);
   if (!res.ok){
     if (res.status === 404) return [];
+    if (res.status === 403) throw new Error(`${path} 목록을 가져오지 못함 (403 — 깃허브 API 시간당 요청 한도 초과, 잠시 후 다시 시도해주세요)`);
     throw new Error(`${path} 목록을 가져오지 못함 (${res.status})`);
   }
-  return await res.json();
+  const data = await res.json();
+  writeGhCache(path, data);
+  return data;
 }
 
 // 폴더 안의 파일만 가져옴 (하위 폴더는 무시)
