@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+
+<!--
+  배포 블로그 주소를 여기에 입력하세요.
+  비워 두거나 이 meta 태그를 삭제하면 스크립트 도서관의 '배포 블로그' 버튼도 숨겨집니다.
+-->
+<meta name="distribution-blog" content="https://example.com/배포-블로그-주소">
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap');
+
+  body{
+    margin: 0;
+    padding: 0;
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    color: #000;
+    background: transparent;
+  }
+
+  h2{
+    font-family: 'Space Grotesk', 'IBM Plex Sans KR', sans-serif;
+    font-size: 19px;
+    font-weight: 700;
+    color: #d8558f;
+    margin: 0 0 12px;
+  }
+
+  p{
+    font-size: 14px;
+    line-height: 1.75;
+    color: #000;
+    margin: 0 0 12px;
+  }
+
+  ul, ol{
+    margin: 0 0 12px;
+    padding-left: 20px;
+  }
+
+  li{
+    font-size: 14px;
+    line-height: 1.7;
+    color: #000;
+  }
+
+  strong{ color: #d8558f; }
+
+  code{
+    background: #fdf6f9;
+    border: 1px solid #f6d7e4;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 13px;
+  }
+
+  .vd-config{
+    margin: 16px 0 0;
+    padding: 16px;
+    border: 1px solid #f1cfdd;
+    border-radius: 12px;
+    background: rgba(255,255,255,.72);
+  }
+
+  .vd-config-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+  }
+
+  .vd-config-summary{
+    margin:4px 0 0;
+    color:#777;
+    font-size:12px;
+    line-height:1.5;
+  }
+
+  #toggle-config{
+    flex-shrink:0;
+    border:1px solid #d8558f;
+    border-radius:999px;
+    background:#fff;
+    color:#d8558f;
+    padding:6px 12px;
+    cursor:pointer;
+    font:inherit;
+  }
+
+  #toggle-config:hover{
+    background:#fdf1f6;
+  }
+
+  .vd-config-body{
+    margin-top:14px;
+  }
+
+  .vd-config.collapsed .vd-config-body{
+    display:none;
+  }
+
+  .vd-config h3{
+    margin: 0 0 16px;
+    color: #d8558f;
+    font-size: 17px;
+  }
+
+  .vd-config h4{
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #222;
+  }
+
+  .config-group{
+    padding: 14px 0;
+    border-top: 1px solid #f4dfe8;
+  }
+
+  .config-group:first-of-type{
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .config-row{
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .vd-config label{
+    display: block;
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .vd-config label > span{
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+  }
+
+  .vd-config input[type="text"],
+  .vd-config input[type="number"],
+  .vd-config input[type="color"],
+  .vd-config select,
+  .vd-config textarea{
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #e6c8d5;
+    border-radius: 7px;
+    background: #fff;
+    padding: 8px 9px;
+    font: inherit;
+    color: #222;
+  }
+
+  .vd-config input[type="color"]{
+    min-height: 38px;
+    padding: 4px;
+  }
+
+  .vd-config textarea{
+    resize: vertical;
+    font-family: Consolas, "Courier New", monospace;
+    line-height: 1.45;
+  }
+
+  .vd-config small,
+  .config-help{
+    display: block;
+    margin-top: 4px;
+    color: #777;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .check-line{
+    display: flex !important;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .check-line input{
+    margin-top: 3px;
+  }
+
+  .check-line > span{
+    margin: 0 !important;
+    font-weight: 400 !important;
+  }
+
+  .config-output{
+    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px solid #f4dfe8;
+  }
+
+  .output-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .output-head h4{
+    margin: 0;
+  }
+
+  #copy-config{
+    border: 1px solid #d8558f;
+    border-radius: 999px;
+    background: #fff;
+    color: #d8558f;
+    padding: 6px 12px;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  #copy-config:hover{
+    background: #fdf1f6;
+  }
+
+  @media (max-width: 720px){
+    .config-row{
+      grid-template-columns: 1fr;
+    }
+  }
+
+</style>
+</head>
+<body>
+
+  <h2>Roll20 Portrait Visual Dialogue</h2>
+
+  <p>
+    Roll20 Portrait Album과 연동하여 캐릭터 스탠딩과 대사 연출을 관리하는 Visual Dialogue용 설정 페이지입니다.
+    아래 옵션을 원하는 값으로 바꾸면 <strong>vd_setting</strong> 코드가 자동으로 생성됩니다.
+  </p>
+
+  <section class="vd-config collapsed" id="vd-config">
+    <div class="vd-config-head">
+      <div>
+        <h3>Visual Dialogue 설정</h3>
+        <p class="vd-config-summary">Portrait Visual Dialogue의 스탠딩·텍스트·대사 진행 옵션을 설정합니다.</p>
+      </div>
+      <button type="button" id="toggle-config" aria-expanded="false">설정 펼치기</button>
+    </div>
+    <div class="vd-config-body">
+
+    <div class="config-group">
+      <h4>스탠딩</h4>
+
+      <label>
+        <span>최대 스탠딩 수</span>
+        <input type="number" id="cfg-max-number" value="5" min="1">
+        <small>한 화면에 동시에 표시할 수 있는 스탠딩 수입니다.</small>
+      </label>
+
+      <div class="config-row">
+        <label>
+          <span>스탠딩 가로</span>
+          <input type="number" id="cfg-width" value="420" min="1">
+        </label>
+        <label>
+          <span>스탠딩 세로</span>
+          <input type="number" id="cfg-height" value="420" min="1">
+        </label>
+        <label>
+          <span>화면 안 최소 노출 너비</span>
+          <input type="number" id="cfg-fit-width" value="200" min="1">
+        </label>
+      </div>
+
+      <label class="check-line">
+        <input type="checkbox" id="cfg-use-emotion" checked>
+        <span><strong>표정별 스탠딩 사용</strong> — 켜면 Portrait Album의 표정별 스탠딩을 사용하고, 끄면 기본 스탠딩만 사용합니다.</span>
+      </label>
+
+      <label class="check-line">
+        <input type="checkbox" id="cfg-show-extra">
+        <span><strong>엑스트라 스탠딩 표시</strong> — 저널에 없는 <code>/as</code> 화자도 스탠딩을 표시합니다.</span>
+      </label>
+
+      <label>
+        <span>기존 카드덱 fallback</span>
+        <input type="text" id="cfg-fallback-deck" value="standings">
+        <small>Portrait Album에 이미지가 없을 때 찾을 기존 카드덱입니다. 사용하지 않으려면 비워두세요.</small>
+      </label>
+
+      <label>
+        <span>엑스트라 카드덱 별칭</span>
+        <input type="text" id="cfg-extra-aliases" value="extra, 엑스트라, NPC">
+        <small>셋 중 실제 존재하는 카드덱을 자동으로 찾습니다. 쉼표로 더 추가할 수 있습니다.</small>
+      </label>
+
+      <label>
+        <span>스탠딩 제외 화자</span>
+        <input type="text" id="cfg-ignore-list" value="GM">
+        <small>스탠딩을 만들지 않을 이름입니다. 여러 명은 쉼표로 구분합니다.</small>
+      </label>
+
+      <label>
+        <span>사용 페이지</span>
+        <input type="text" id="cfg-page-list" value="conversation,intro">
+        <small>여러 페이지는 쉼표로 구분합니다.</small>
+      </label>
+    </div>
+
+    <div class="config-group">
+      <h4>캐릭터 기본 텍스트</h4>
+
+      <div class="config-row">
+        <label>
+          <span>이름 크기</span>
+          <input type="number" id="cfg-char-name-size" value="18" min="1">
+        </label>
+        <label>
+          <span>이름 색</span>
+          <input type="color" id="cfg-char-name-color" value="#ffffff">
+        </label>
+        <label>
+          <span>이름 정렬</span>
+          <select id="cfg-char-name-align">
+            <option value="left">왼쪽</option>
+            <option value="center" selected>가운데</option>
+            <option value="right">오른쪽</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="config-row">
+        <label>
+          <span>대사 크기</span>
+          <input type="number" id="cfg-char-dialogue-size" value="16" min="1">
+        </label>
+        <label>
+          <span>대사 색</span>
+          <input type="color" id="cfg-char-dialogue-color" value="#ffffff">
+        </label>
+        <label>
+          <span>대사 정렬</span>
+          <select id="cfg-char-dialogue-align">
+            <option value="left" selected>왼쪽</option>
+            <option value="center">가운데</option>
+            <option value="right">오른쪽</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <h4>GM 텍스트</h4>
+
+      <div class="config-row">
+        <label>
+          <span>이름 크기</span>
+          <input type="number" id="cfg-gm-name-size" value="18" min="1">
+        </label>
+        <label>
+          <span>이름 색</span>
+          <input type="color" id="cfg-gm-name-color" value="#ffffff">
+        </label>
+        <label>
+          <span>이름 정렬</span>
+          <select id="cfg-gm-name-align">
+            <option value="left">왼쪽</option>
+            <option value="center" selected>가운데</option>
+            <option value="right">오른쪽</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="config-row">
+        <label>
+          <span>대사 크기</span>
+          <input type="number" id="cfg-gm-dialogue-size" value="16" min="1">
+        </label>
+        <label>
+          <span>대사 색</span>
+          <input type="color" id="cfg-gm-dialogue-color" value="#ffffff">
+        </label>
+        <label>
+          <span>대사 정렬</span>
+          <select id="cfg-gm-dialogue-align">
+            <option value="left" selected>왼쪽</option>
+            <option value="center">가운데</option>
+            <option value="right">오른쪽</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <h4>/desc 텍스트</h4>
+      <div class="config-row">
+        <label>
+          <span>글자 크기</span>
+          <input type="number" id="cfg-desc-size" value="20" min="1">
+        </label>
+        <label>
+          <span>글자 색</span>
+          <input type="color" id="cfg-desc-color" value="#ffffff">
+        </label>
+        <label>
+          <span>정렬</span>
+          <select id="cfg-desc-align">
+            <option value="left">왼쪽</option>
+            <option value="center" selected>가운데</option>
+            <option value="right">오른쪽</option>
+          </select>
+        </label>
+      </div>
+    </div>
+
+    <div class="config-group">
+      <h4>캐릭터별 스타일</h4>
+      <p class="config-help">
+        특정 캐릭터만 기본 스타일과 다르게 표시하고 싶을 때 사용합니다.
+        아래에는 JavaScript 객체 형식으로 입력하세요. 비워두면 캐릭터 기본 스타일을 사용합니다.
+      </p>
+      <textarea id="cfg-character-styles" rows="9" spellcheck="false" placeholder='{
+  "홍길동": {
+    "name_font_color": "#ff8080",
+    "dialogue_font_color": "#ffecec",
+    "name_align": "center",
+    "dialogue_align": "left"
+  }
+}'></textarea>
+    </div>
+
+    <div class="config-group">
+      <h4>대사 진행</h4>
+      <div class="config-row">
+        <label>
+          <span>최소 표시시간(ms)</span>
+          <input type="number" id="cfg-min-showtime" value="1000" min="0">
+        </label>
+        <label>
+          <span>글자당 표시시간</span>
+          <input type="number" id="cfg-showtime-ratio" value="20" min="0">
+        </label>
+        <label>
+          <span>자동복구 시간(ms)</span>
+          <input type="number" id="cfg-watchdog" value="15000" min="5000">
+        </label>
+      </div>
+
+      <div class="config-row">
+        <label>
+          <span>줄간격 비율</span>
+          <input type="number" id="cfg-line-height" value="1.7" step="0.1" min="0.1">
+        </label>
+        <label>
+          <span>글자폭 보정</span>
+          <input type="number" id="cfg-letter-spacing" value="0.85" step="0.05" min="0.1">
+        </label>
+      </div>
+    </div>
+
+    <div class="config-output">
+      <div class="output-head">
+        <h4>생성된 설정 코드</h4>
+        <button type="button" id="copy-config">복사</button>
+      </div>
+      <textarea id="generated-config" rows="34" readonly spellcheck="false"></textarea>
+      <p class="config-help">
+        위 코드를 <code>Roll20 Portrait Visual Dialogue.js</code>의
+        <code>const vd_setting = { ... };</code> 부분과 교체하면 됩니다.
+      </p>
+    </div>
+  </section>
+
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const q = value => JSON.stringify(value);
+
+  function num(id, fallback){
+    const value = Number($(id).value);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function aliases(){
+    return $('cfg-extra-aliases').value
+      .split(',')
+      .map(v => v.trim())
+      .filter(Boolean);
+  }
+
+  function characterStylesText(){
+    const raw = $('cfg-character-styles').value.trim();
+    if (!raw) return '{}';
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 4);
+    } catch (e) {
+      return raw;
+    }
+  }
+
+  function generate(){
+    const styles = characterStylesText()
+      .split('\n')
+      .map(line => '    ' + line)
+      .join('\n')
+      .trimStart();
+
+    const code = `const vd_setting = {
+    max_number: ${num('cfg-max-number', 5)},
+    width: ${num('cfg-width', 420)},
+    height: ${num('cfg-height', 420)},
+    fit_width: ${num('cfg-fit-width', 200)},
+
+    use_emotion: ${$('cfg-use-emotion').checked},
+    show_extra_standing: ${$('cfg-show-extra').checked},
+    fallback_deck_name: ${q($('cfg-fallback-deck').value.trim())},
+    extra_deck_aliases: ${JSON.stringify(aliases())},
+    ignore_list: ${q($('cfg-ignore-list').value.trim())},
+    page_list: ${q($('cfg-page-list').value.trim())},
+
+    text_styles: {
+        character_default: {
+            name_font_size: ${num('cfg-char-name-size', 18)},
+            name_font_color: ${q($('cfg-char-name-color').value)},
+            dialogue_font_size: ${num('cfg-char-dialogue-size', 16)},
+            dialogue_font_color: ${q($('cfg-char-dialogue-color').value)},
+            name_align: ${q($('cfg-char-name-align').value)},
+            dialogue_align: ${q($('cfg-char-dialogue-align').value)}
+        },
+        gm: {
+            name_font_size: ${num('cfg-gm-name-size', 18)},
+            name_font_color: ${q($('cfg-gm-name-color').value)},
+            dialogue_font_size: ${num('cfg-gm-dialogue-size', 16)},
+            dialogue_font_color: ${q($('cfg-gm-dialogue-color').value)},
+            name_align: ${q($('cfg-gm-name-align').value)},
+            dialogue_align: ${q($('cfg-gm-dialogue-align').value)}
+        },
+        desc: {
+            font_size: ${num('cfg-desc-size', 20)},
+            font_color: ${q($('cfg-desc-color').value)},
+            align: ${q($('cfg-desc-align').value)}
+        }
+    },
+
+    character_styles: ${styles},
+
+    min_showtime: ${num('cfg-min-showtime', 1000)},
+    showtime_ratio: ${num('cfg-showtime-ratio', 20)},
+    line_height: ${num('cfg-line-height', 1.7)},
+    letter_spacing: ${num('cfg-letter-spacing', 0.85)},
+    queue_watchdog_ms: ${num('cfg-watchdog', 15000)}
+};`;
+
+    $('generated-config').value = code;
+
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'portrait-vd-setting-preview',
+        code
+      }, '*');
+    }
+  }
+
+  document.querySelectorAll('#vd-config input, #vd-config select, #vd-config textarea')
+    .forEach(el => {
+      el.addEventListener('input', generate);
+      el.addEventListener('change', generate);
+    });
+
+  const configSection = $('vd-config');
+  const toggleButton = $('toggle-config');
+
+  toggleButton.addEventListener('click', function(){
+    const collapsed = configSection.classList.toggle('collapsed');
+    this.textContent = collapsed ? '설정 펼치기' : '설정 접기';
+    this.setAttribute('aria-expanded', String(!collapsed));
+
+    // iframe 높이를 부모가 다시 계산할 수 있도록 약간의 레이아웃 갱신 여유를 줍니다.
+    setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 0);
+  });
+
+  $('copy-config').addEventListener('click', async function(){
+    const text = $('generated-config').value;
+    try {
+      await navigator.clipboard.writeText(text);
+      this.textContent = '복사됨';
+      setTimeout(() => { this.textContent = '복사'; }, 1200);
+    } catch (e) {
+      $('generated-config').select();
+      document.execCommand('copy');
+      this.textContent = '복사됨';
+      setTimeout(() => { this.textContent = '복사'; }, 1200);
+    }
+  });
+
+  generate();
+})();
+</script>
+
+</body>
+</html>
