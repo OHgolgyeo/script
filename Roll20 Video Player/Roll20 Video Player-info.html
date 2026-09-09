@@ -2,13 +2,11 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-
 <!--
-  배포 블로그 주소를 여기에 입력하세요.
-  비워 두거나 이 meta 태그를 삭제하면 스크립트 도서관의 '배포 블로그' 버튼도 숨겨집니다.
+배포 블로그 주소를 여기에 입력하세요.
+비워 두거나 이 meta 태그를 삭제하면 스크립트 도서관의 '배포 블로그' 버튼도 숨겨집니다.
 -->
 <meta name="distribution-blog" content=" ">
-
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap');
 
@@ -39,7 +37,6 @@
     margin: 0 0 12px;
     padding-left: 20px;
   }
-
   li{
     font-size: 14px;
     line-height: 1.7;
@@ -55,6 +52,87 @@
     padding: 1px 6px;
     font-size: 13px;
   }
+
+  /* ---- 스타일 커스터마이저 ---- */
+  .customizer{
+    margin-top: 8px;
+    padding: 14px;
+    border: 1px solid #f0d8e2;
+    border-radius: 10px;
+    background: #fffafc;
+  }
+  .customizer h3{
+    font-family: 'Space Grotesk', 'IBM Plex Sans KR', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #d8558f;
+    margin: 0 0 10px;
+  }
+  .field-row{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .field{
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: #444;
+  }
+  .field input[type="color"]{
+    width: 44px;
+    height: 28px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0;
+    cursor: pointer;
+  }
+  .field select, .field input[type="number"]{
+    font-size: 13px;
+    padding: 5px 6px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: inherit;
+  }
+  .field input[type="number"]{ width: 64px; }
+
+  .preview-box{
+    margin: 4px 0 10px;
+    padding: 10px;
+    background: #1a1a1a;
+    border-radius: 8px;
+  }
+
+  .code-out{
+    position: relative;
+  }
+  .code-out pre{
+    background: #100e0a;
+    color: #d8cfb8;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    border-radius: 8px;
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .copy-btn{
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    font-size: 11px;
+    background: #d8558f;
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  .copy-btn.copied{ background: #4caf50; }
 </style>
 </head>
 <body>
@@ -62,15 +140,101 @@
   <h2>Roll20 Video Player</h2>
 
   <p>
-    Roll20에서 플에이어들에게 영상 자료를 전달할 수 있습니다.
-    영상은 전체모드/채팅모드/창모드로 볼 수 있고, 확장자가 포함된 외부 링크 뿐 아니라 유튜브, 구글 드라이브, 트위터 링크로 영상을 가져올 수 있습니다.
-    매크로에 <code>!컷 ?{영상 링크(확장자 포함)|}, ?{대기시간|}, ?{모드|full|map|window}, "?{저널이름|}"</code>를 저장해시면 사용하시기 편합니다.
+    Roll20에서 플레이어들에게 영상 자료를 전달할 수 있습니다.
+    영상은 전체모드/맵모드/창모드로 볼 수 있고, 확장자가 포함된 외부 링크 뿐 아니라
+    유튜브, 구글 드라이브, 트위터 링크로 영상을 가져올 수 있습니다.
+    매크로에 <code>!컷 ?{영상 링크(확장자 포함)|}, ?{대기시간|}, ?{모드|full|map|window}, "?{저널이름|}"</code>를
+    저장해두시면 사용하시기 편합니다.
   </p>
 
-  <p>
-    따라서 이 info 파일에서는 <strong>설명 내용</strong>과 위쪽의
-    <code>distribution-blog</code> 주소만 관리하면 됩니다.
-  </p>
+  <div class="customizer">
+    <h3>채팅 안내 문구 스타일 만들기</h3>
+
+    <div class="field-row">
+      <div class="field">
+        배경색
+        <input type="color" id="cBg" value="#2b2b2b">
+      </div>
+      <div class="field">
+        글자색
+        <input type="color" id="cText" value="#9ecbff">
+      </div>
+      <div class="field">
+        글자 크기(px)
+        <input type="number" id="cSize" value="13" min="8" max="40">
+      </div>
+      <div class="field">
+        폰트
+        <select id="cFont">
+          <option value="sans-serif">기본 sans-serif</option>
+          <option value="'IBM Plex Sans KR', sans-serif">IBM Plex Sans KR</option>
+          <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
+          <option value="monospace">고정폭(monospace)</option>
+          <option value="serif">명조(serif)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="preview-box">
+      <a id="preview" href="#" target="_blank" style="text-decoration:none;">🎬 Playing a video · · ·</a>
+    </div>
+
+    <div class="code-out">
+      <button class="copy-btn" id="copyBtn">복사</button>
+      <pre id="codeOut"></pre>
+    </div>
+  </div>
+
+<script>
+  var bgInput = document.getElementById('cBg');
+  var textInput = document.getElementById('cText');
+  var sizeInput = document.getElementById('cSize');
+  var fontInput = document.getElementById('cFont');
+  var preview = document.getElementById('preview');
+  var codeOut = document.getElementById('codeOut');
+  var copyBtn = document.getElementById('copyBtn');
+
+  function update(){
+    var bg = bgInput.value;
+    var text = textInput.value;
+    var size = sizeInput.value;
+    var font = fontInput.value;
+
+    preview.style.padding = '6px 10px';
+    preview.style.background = bg;
+    preview.style.borderRadius = '6px';
+    preview.style.color = text;
+    preview.style.fontFamily = font;
+    preview.style.fontSize = size + 'px';
+
+    var code =
+      "var CUTSCENE_MESSAGE_STYLE = {\n" +
+      "  container: 'padding:6px 10px;background:" + bg + ";border-radius:6px;',\n" +
+      "  text: 'font-family:" + font + ";font-size:" + size + "px;color:" + text + ";'\n" +
+      "};";
+    codeOut.textContent = code;
+
+    // 부모 페이지(스크립트 도서관)의 코드 패널에 실시간 미리보기 반영 요청
+    parent.postMessage({ type: 'style-preview', code: code }, '*');
+  }
+
+  [bgInput, textInput, sizeInput, fontInput].forEach(function(el){
+    el.addEventListener('input', update);
+  });
+
+  copyBtn.addEventListener('click', function(){
+    navigator.clipboard.writeText(codeOut.textContent).then(function(){
+      copyBtn.textContent = '복사됨';
+      copyBtn.classList.add('copied');
+      setTimeout(function(){
+        copyBtn.textContent = '복사';
+        copyBtn.classList.remove('copied');
+      }, 1500);
+    });
+  });
+
+  update();
+</script>
 
 </body>
 </html>
