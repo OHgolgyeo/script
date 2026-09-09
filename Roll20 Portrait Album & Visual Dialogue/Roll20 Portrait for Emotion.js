@@ -3,7 +3,7 @@
 // @namespace    https://github.com/OHgolgyeo/script
 // @version      1.0
 // @description  "대사 @표정" 또는 "@표정"만 입력했을 때, 대사는 그대로 보내고 "@표정" 태그는 "!@표정"으로 바꿔서 따로 보내 화면에서 안 보이게 함.
-// @author       오골계
+// @author       오골계 (https://x.com/5golgyeo)
 // @match        https://app.roll20.net/editor*
 // @grant        none
 // ==/UserScript==
