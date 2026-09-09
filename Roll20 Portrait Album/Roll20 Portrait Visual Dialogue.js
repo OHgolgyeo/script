@@ -50,6 +50,17 @@ max_number: 5,
 width: 420,
 height: 420,
 fit_width: 200,
+
+    // 캐릭터/표정별 스탠딩 크기
+    // 우선순위: 캐릭터+표정 > 캐릭터 default > 공통 width/height
+    // 예:
+    // standing_sizes: {
+    //   "그웬돌린": {
+    //     default: { width: 420, height: 520 },
+    //     "화남": { width: 460, height: 560 }
+    //   }
+    // },
+    standing_sizes: {},
 use_emotion: true,
 show_extra_standing: false,
 fallback_deck_name: "standings",
@@ -92,18 +103,52 @@ const vdFindExtraDeck = function(){
 };
 const vdGetAlbumExpression = (character, emotion) => character && state.ExpressionSwitcher && state.ExpressionSwitcher[character.id] ? state.ExpressionSwitcher[character.id][emotion] || null : null;
 const vdGetAlbumDefault = character => character && state.ExpressionSwitcherDefaults ? state.ExpressionSwitcherDefaults[character.id] || null : null;
+const vdGetStandingSize = function(characterName, emotion) {
+  const all = vd_setting.standing_sizes || {};
+  const charSetting = all[characterName] || {};
+  const specific = emotion && charSetting[emotion] ? charSetting[emotion] : null;
+  const fallback = charSetting.default || {};
+
+  const width = Number((specific && specific.width) ?? fallback.width ?? vd_setting.width);
+  const height = Number((specific && specific.height) ?? fallback.height ?? vd_setting.height);
+
+  return {
+    width: Number.isFinite(width) && width > 0 ? width : vd_setting.width,
+    height: Number.isFinite(height) && height > 0 ? height : vd_setting.height
+  };
+};
+
 const vdAlbumStandingUrl = function(character, emotion){
   if (!character) return '';
-  if (!vd_setting.use_emotion || emotion === '기본' || !emotion) {
-    const d = vdGetAlbumDefault(character);
-    if (d && d.token) return d.token;
-    if (emotion && vd_setting.use_emotion) { const look=vdGetAlbumExpression(character, emotion); if (look && look.token) return look.token; }
-    return '';
+
+  const byChar = state.ExpressionSwitcher && state.ExpressionSwitcher[character.id]
+    ? state.ExpressionSwitcher[character.id]
+    : {};
+
+  // 표정명을 명시한 경우: 정확히 그 표정의 스탠딩을 먼저 사용
+  if (vd_setting.use_emotion && emotion && emotion !== '기본') {
+    const look = byChar[emotion];
+    if (look && look.token) return look.token;
   }
-  const look = vdGetAlbumExpression(character, emotion);
-  if (look && look.token) return look.token;
+
+  // 일반 대사 또는 @기본:
+  // 1) Album에 '기본' 이름으로 등록된 스탠딩
+  const basicLook = byChar['기본'];
+  if (basicLook && basicLook.token) return basicLook.token;
+
+  // 2) 최초 표정 전환 전에 저장된 대표 토큰
   const d = vdGetAlbumDefault(character);
-  return d && d.token ? d.token : '';
+  if (d && d.token) return d.token;
+
+  // 3) 대표값이 아직 저장되지 않았다면 등록된 스탠딩 중 첫 번째 사용
+  //    (!!스탠딩등록 직후 첫 대사에서도 바로 동작하게 하기 위함)
+  const names = Object.keys(byChar);
+  for (let i = 0; i < names.length; i++) {
+    const look = byChar[names[i]];
+    if (look && look.token) return look.token;
+  }
+
+  return '';
 };
 const vdFallbackStandingUrl = function(characterName, emotion){
   if (!vd_setting.fallback_deck_name) return '';
@@ -293,7 +338,14 @@ if (msg.type == "api"){
             if (current_token) {
                 let img=chat_cha ? (vdAlbumStandingUrl(chat_cha,emot)||vdFallbackStandingUrl(cha_name,emot)) : vdExtraStandingUrl(cha_name);
                 if (!img) { sendChat('error','/w gm **'+cha_name+'**의 스탠딩 이미지를 찾지 못했습니다.',null,{noarchive:true}); return; }
-                current_token.set({imgsrc:img.replace('med','thumb').replace('max','thumb'),bar1_value:cha_name,represents:chat_cha?chat_cha.get('_id'):'',width:vd_setting.width,height:vd_setting.height});
+                const standingSize = vdGetStandingSize(cha_name, vd_setting.use_emotion ? emot : '');
+                current_token.set({
+                    imgsrc: img.replace('med','thumb').replace('max','thumb'),
+                    bar1_value: cha_name,
+                    represents: chat_cha ? chat_cha.get('_id') : '',
+                    width: standingSize.width,
+                    height: standingSize.height
+                });
             }
 
 		}    
@@ -551,7 +603,17 @@ const showDialogue = function() {
         if (current_token == null && (chat_cha || vd_setting.show_extra_standing)) {
             let standingUrl = chat_cha ? (vdAlbumStandingUrl(chat_cha,'') || vdFallbackStandingUrl(msg.who,'')) : vdExtraStandingUrl(msg.who);
             if (!standingUrl) { sendChat('error','/w gm **'+msg.who+'**의 스탠딩 이미지를 찾지 못했습니다.',null,{noarchive:true}); showNextDialogue(); return; }
-            let opt={name:'vd_standing',_pageid:bg_area.get('_pageid'),width:vd_setting.width,height:vd_setting.height,bar1_value:msg.who,layer:'gmlayer',imgsrc:standingUrl.replace('med','thumb').replace('max','thumb'),represents:chat_cha?chat_cha.get('_id'):''};
+            const standingSize = vdGetStandingSize(msg.who, '');
+            let opt={
+                name:'vd_standing',
+                _pageid:bg_area.get('_pageid'),
+                width:standingSize.width,
+                height:standingSize.height,
+                bar1_value:msg.who,
+                layer:'gmlayer',
+                imgsrc:standingUrl.replace('med','thumb').replace('max','thumb'),
+                represents:chat_cha?chat_cha.get('_id'):''
+            };
             if (tokens.length >= vd_setting.max_number) opt.left=lowest_priority.get('left'); else opt.left=arrangeStandings(true);
             opt.top=bg_area.get('top');
             if (tokens.length >= vd_setting.max_number) { lowest_priority.set(opt); current_token=lowest_priority; } else current_token=createObj('graphic',opt);
