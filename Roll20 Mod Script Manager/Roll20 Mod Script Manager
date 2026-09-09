@@ -1,0 +1,454 @@
+// =============================================
+//     Roll20 Mod Script Manager
+//  ---------------------------------------------------
+//     GM이 게임방에 입장하면 기본적으로 메뉴를 1회 자동 귓속말합니다.
+//     [호출 종료]를 누르면 이후 입장부터 자동 호출하지 않습니다.
+//     필요할 때는 !rmsm 으로 다시 호출할 수 있습니다.
+//     
+//     명령:
+//     !rmsm : 기본 호출
+//     !rmsm macro : 명령어를 모아 매크로로 제작
+//     !rmsm auto on : 매 접속 시 호출
+//     !rmsm auto off : 항상 끄기
+// =============================================
+
+
+var Roll20ModScriptManager = Roll20ModScriptManager || (function () {
+    'use strict';
+
+    var VERSION = '0.7.8';
+    var ROOT = '!rmsm';
+    var STATE_KEY = 'Roll20ModScriptManager';
+    var SCHEMA = 5;
+
+    // sandbox가 살아 있는 동안 중복 자동 호출 방지
+    var welcomedThisRuntime = {};
+
+    function freshState() {
+        return {
+            schema:SCHEMA,
+            version:VERSION,
+            autoOpen:true,
+            importSessions:{},
+            scan:null,
+            scripts:[],
+            prefs:{
+                macroName:'API 명령어',
+                queryTitle:'명령어'
+            }
+        };
+    }
+
+    function S() {
+        if (!state[STATE_KEY] || state[STATE_KEY].schema !== SCHEMA) {
+            var oldAuto = state[STATE_KEY] && typeof state[STATE_KEY].autoOpen === 'boolean'
+                ? state[STATE_KEY].autoOpen
+                : true;
+
+            state[STATE_KEY] = freshState();
+            state[STATE_KEY].autoOpen = oldAuto;
+        }
+
+        state[STATE_KEY].version = VERSION;
+        return state[STATE_KEY];
+    }
+
+    function html(v) {
+        return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    function button(label, command, color) {
+        return '<a style="display:inline-block;padding:4px 7px;margin:2px;background:' +
+            (color || '#555') +
+            ';color:#fff;border-radius:4px;text-decoration:none" href="' +
+            html(command) + '">' + html(label) + '</a>';
+    }
+
+    function panel(title, body) {
+        return '<div style="border:1px solid #999;background:#fff;padding:7px;border-radius:6px">' +
+            '<div style="font-weight:bold;margin-bottom:6px">' + html(title) + '</div>' +
+            body + '</div>';
+    }
+
+    function playerName(player) {
+        return String(player && (player.get('_displayname') || player.get('displayname')) || 'gm')
+            .replace(/"/g, '');
+    }
+
+    function whisperToPlayer(player, body) {
+        sendChat('Roll20 Mod Script Manager',
+            '/w "' + playerName(player) + '" ' + body,
+            null,
+            {noarchive:true});
+    }
+
+    function whisperMsg(msg, body) {
+        var p = getObj('player', msg.playerid);
+        if (p) whisperToPlayer(p, body);
+    }
+
+    function showMenuToPlayer(player, autoTriggered) {
+        var s = S();
+        var body =
+            '<div style="margin-bottom:6px">' +
+                (autoTriggered
+                    ? 'GM 입장이 감지되어 자동 호출했습니다.'
+                    : '필요한 기능을 선택하세요.') +
+            '</div>' +
+            button('1. 분석', ROOT + ' ui-analysis', '#3973a5') +
+            button('2. 분석 · 편집', ROOT + ' ui-edit', '#568b4b') +
+            button('매크로 생성/갱신', ROOT + ' macro', '#7c5499') +
+            '<hr>' +
+            button('호출 종료', ROOT + ' auto off', '#a45b5b') +
+            '<div style="font-size:.85em;color:#777;margin-top:5px">' +
+                '호출 종료 후에도 <code>!rmsm</code>으로 언제든 다시 열 수 있습니다.' +
+            '</div>';
+
+        whisperToPlayer(player, panel('Roll20 Mod Script Manager v' + VERSION, body));
+    }
+
+    function maybeAutoShow(player) {
+        var s = S();
+        if (!s.autoOpen) return;
+        if (!player || !playerIsGM(player.id)) return;
+        if (!player.get('_online')) return;
+        if (welcomedThisRuntime[player.id]) return;
+
+        welcomedThisRuntime[player.id] = true;
+        showMenuToPlayer(player, true);
+    }
+
+    function decodeBase64Utf8(input) {
+        var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        var clean = String(input || '').replace(/[^A-Za-z0-9+/=]/g, '');
+        var bytes = [], i = 0;
+
+        while (i < clean.length) {
+            var e1 = chars.indexOf(clean.charAt(i++));
+            var e2 = chars.indexOf(clean.charAt(i++));
+            var c3 = clean.charAt(i++);
+            var c4 = clean.charAt(i++);
+            var e3 = c3 === '=' ? 64 : chars.indexOf(c3);
+            var e4 = c4 === '=' ? 64 : chars.indexOf(c4);
+
+            bytes.push((e1 << 2) | (e2 >> 4));
+            if (e3 !== 64) bytes.push(((e2 & 15) << 4) | (e3 >> 2));
+            if (e4 !== 64) bytes.push(((e3 & 3) << 6) | e4);
+        }
+
+        var out = '', p = 0;
+        while (p < bytes.length) {
+            var b1 = bytes[p++];
+
+            if (b1 < 0x80) {
+                out += String.fromCharCode(b1);
+            } else if ((b1 & 0xE0) === 0xC0) {
+                var b2 = bytes[p++];
+                out += String.fromCharCode(((b1 & 0x1F) << 6) | (b2 & 0x3F));
+            } else if ((b1 & 0xF0) === 0xE0) {
+                var b22 = bytes[p++], b3 = bytes[p++];
+                out += String.fromCharCode(((b1 & 0x0F) << 12) | ((b22 & 0x3F) << 6) | (b3 & 0x3F));
+            } else {
+                var b23 = bytes[p++], b32 = bytes[p++], b4 = bytes[p++];
+                var cp = ((b1 & 7) << 18) |
+                         ((b23 & 0x3F) << 12) |
+                         ((b32 & 0x3F) << 6) |
+                         (b4 & 0x3F);
+
+                cp -= 0x10000;
+                out += String.fromCharCode(
+                    0xD800 + (cp >> 10),
+                    0xDC00 + (cp & 0x3FF)
+                );
+            }
+        }
+
+        return out;
+    }
+
+    function normalizePayload(payload) {
+        if (!payload ||
+            payload.schema !== 'roll20-mod-script-manager/import-v3' ||
+            !Array.isArray(payload.scripts)) {
+            throw new Error('지원하지 않는 Scanner 데이터입니다.');
+        }
+
+        return payload.scripts.map(function (script, si) {
+            return {
+                name:String(script.name || ('Script ' + (si+1))),
+                label:String(script.label || script.name || ('Script ' + (si+1))),
+                    enabled:script.enabled !== false,
+                commands:(Array.isArray(script.commands) ? script.commands : [])
+                    .map(function (cmd) {
+                        return {
+                            syntax:String(cmd.syntax || '').trim(),
+                            label:String(cmd.label || cmd.syntax || ''),
+                            enabled:cmd.enabled !== false
+                        };
+                    })
+                    .filter(function (cmd) {
+                        return cmd.syntax && cmd.syntax.charAt(0) === '!';
+                    })
+            };
+        });
+    }
+
+    function applyImport(payload) {
+        var s = S();
+        s.scripts = normalizePayload(payload);
+        s.scan = {
+            gameId:String(payload.gameId || ''),
+            scannedAt:String(payload.scannedAt || ''),
+            scannerVersion:String(payload.scannerVersion || '')
+        };
+    }
+
+    function receiveImport(msg, raw) {
+        var m = raw.match(/^import\s+(\S+)\s+(\d+)\/(\d+)\s+([A-Za-z0-9+/=]+)$/);
+        if (!m) return;
+
+        var id = m[1];
+        var index = parseInt(m[2],10);
+        var total = parseInt(m[3],10);
+        var chunk = m[4];
+        var s = S();
+
+        if (!s.importSessions[id] || s.importSessions[id].total !== total) {
+            s.importSessions[id] = {
+                total:total,
+                chunks:{},
+                received:0
+            };
+        }
+
+        var sess = s.importSessions[id];
+
+        if (!sess.chunks[index]) {
+            sess.chunks[index] = chunk;
+            sess.received += 1;
+        }
+
+        // 중간 조각은 아무 메시지도 만들지 않는다.
+        if (sess.received < total) return;
+
+        var joined = '';
+        for (var i = 1; i <= total; i++) {
+            if (!sess.chunks[i]) return;
+            joined += sess.chunks[i];
+        }
+
+        try {
+            var payload = JSON.parse(decodeBase64Utf8(joined));
+            applyImport(payload);
+            delete s.importSessions[id];
+
+            var count = 0;
+            s.scripts.forEach(function (sc) {
+                if (!sc.enabled) return;
+                sc.commands.forEach(function (cmd) {
+                    if (cmd.enabled) count += 1;
+                });
+            });
+
+            whisperMsg(msg, panel('편집 적용 완료',
+                '<b>' + count + '개</b> 명령어가 매크로 대상에 저장되었습니다.<br>' +
+                button('매크로 생성/갱신', ROOT + ' macro', '#7c5499') +
+                button('호출 종료', ROOT + ' auto off', '#a45b5b')));
+        } catch (e) {
+            delete s.importSessions[id];
+            whisperMsg(msg, panel('Import 오류', html(e && e.message ? e.message : e)));
+        }
+    }
+
+    function safeLabel(v) {
+        return String(v || '')
+            .replace(/\|/g, '｜')
+            .replace(/,/g, '，')
+            .replace(/\}/g, '〕')
+            .replace(/\r?\n/g, ' ');
+    }
+
+    function syntaxToAction(syntax) {
+        return String(syntax || '').replace(/<([^>]+)>/g, function (_, label) {
+            return '?{' + label + '}';
+        });
+    }
+
+    function escapeNested(action) {
+        if (action.indexOf('?{') === -1 &&
+            action.indexOf('@{') === -1 &&
+            action.indexOf('%{') === -1) {
+            return action;
+        }
+
+        return action
+            .replace(/&/g, '&#38;')
+            .replace(/\|/g, '&#124;')
+            .replace(/,/g, '&#44;')
+            .replace(/\}/g, '&#125;');
+    }
+
+    function buildMacroAction() {
+        var s = S();
+        var parts = [];
+
+        s.scripts.forEach(function (script) {
+            if (!script.enabled) return;
+
+            var active = script.commands.filter(function (cmd) {
+                return cmd.enabled;
+            });
+
+            if (!active.length) return;
+
+            parts.push('──── ' + safeLabel(script.label || script.name) + ' ────,');
+
+            active.forEach(function (cmd) {
+                var display = String(cmd.label || '').trim();
+                if (!display) display = cmd.syntax;
+
+                // 사람이 읽을 이름과 실제 명령어를 함께 보여준다.
+                // 예: "로그 공개  ·  !at show"
+                var menuLabel = display === cmd.syntax
+                    ? display
+                    : display + ' | ' + cmd.syntax;
+
+                parts.push(
+                    safeLabel(menuLabel) + ',' +
+                    escapeNested(syntaxToAction(cmd.syntax))
+                );
+            });
+        });
+
+        if (!parts.length) {
+            parts.push('선택된 명령어 없음,/w gm 선택된 명령어가 없습니다.');
+        }
+
+        return '?{' + safeLabel(s.prefs.queryTitle || '명령어') + '|' + parts.join('|') + '}';
+    }
+
+    function createMacro(msg) {
+        var s = S();
+
+        if (!s.scripts.length) {
+            whisperMsg(msg, panel('Roll20 Mod Script Manager',
+                '아직 분석/편집 데이터가 없습니다.<br>' +
+                button('편집 열기', ROOT + ' ui-edit', '#568b4b')));
+            return;
+        }
+
+        var name = s.prefs.macroName || 'API 명령어';
+        var action = buildMacroAction();
+
+        var existing = findObjs({_type:'macro', name:name}).filter(function (m) {
+            return (m.get('_playerid') || m.get('playerid')) === msg.playerid;
+        });
+
+        var macro;
+
+        if (existing.length) {
+            existing[0].set({action:action});
+            macro = existing[0];
+        } else {
+            macro = createObj('macro', {
+                name:name,
+                action:action,
+                playerid:msg.playerid,
+                visibleto:''
+            });
+        }
+
+        whisperMsg(msg, panel('매크로 생성',
+            macro
+                ? '<b>' + html(name) + '</b> 매크로를 ' +
+                  (existing.length ? '갱신했습니다.' : '생성했습니다.') +
+                  '<br>' +
+                  button('호출 종료', ROOT + ' auto off', '#a45b5b')
+                : '매크로 생성에 실패했습니다.'));
+    }
+
+    function handleChat(msg) {
+        if (msg.type !== 'api') return;
+        if (msg.content !== ROOT && msg.content.indexOf(ROOT + ' ') !== 0) return;
+        if (!playerIsGM(msg.playerid)) return;
+
+        S();
+        var raw = msg.content.slice(ROOT.length).trim();
+
+        if (!raw) {
+            var p = getObj('player', msg.playerid);
+            if (p) showMenuToPlayer(p, false);
+            return;
+        }
+
+        if (raw.indexOf('import ') === 0) {
+            receiveImport(msg, raw);
+            return;
+        }
+
+        if (raw === 'macro') {
+            createMacro(msg);
+            return;
+        }
+
+        if (raw === 'auto off') {
+            S().autoOpen = false;
+            whisperMsg(msg, panel('자동 호출 종료',
+                '다음 입장부터 자동 메뉴를 표시하지 않습니다.<br>' +
+                '필요할 때 <code>!rmsm</code>을 입력하면 다시 호출할 수 있습니다.<br>' +
+                '자동 호출을 다시 켜려면 <code>!rmsm auto on</code>을 사용하세요.'));
+            return;
+        }
+
+        if (raw === 'auto on') {
+            S().autoOpen = true;
+            whisperMsg(msg, panel('자동 호출 켜짐',
+                '다음 GM 입장부터 메뉴를 자동으로 표시합니다.'));
+            return;
+        }
+
+        // ui-analysis / ui-edit는 userscript가 클릭을 가로채므로
+        // userscript가 없을 때만 안내가 채팅으로 도달한다.
+        if (raw === 'ui-analysis' || raw === 'ui-edit') {
+            whisperMsg(msg, panel('브라우저 UI 필요',
+                '분석/편집 창을 열려면 Roll20 Mod Script Manager userscript가 필요합니다.'));
+            return;
+        }
+
+        var p2 = getObj('player', msg.playerid);
+        if (p2) showMenuToPlayer(p2, false);
+    }
+
+    on('ready', function () {
+        S();
+        on('chat:message', handleChat);
+
+        // GM이 이미 온라인인 상태에서 sandbox가 준비되는 경우도 처리
+        setTimeout(function () {
+            findObjs({_type:'player'}).forEach(function (p) {
+                maybeAutoShow(p);
+            });
+        }, 1200);
+
+        // 오프라인 -> 온라인이 되는 순간 자동 메뉴
+        on('change:player:_online', function (player, prev) {
+            var wasOnline = !!(prev && prev._online);
+            var isOnline = !!player.get('_online');
+
+            if (!isOnline) {
+                delete welcomedThisRuntime[player.id];
+                return;
+            }
+
+            if (!wasOnline && isOnline) {
+                maybeAutoShow(player);
+            }
+        });
+
+        log('Roll20 Mod Script Manager v' + VERSION + ' ready. Type ' + ROOT);
+    });
+
+    return { version:VERSION };
+}());
