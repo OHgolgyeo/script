@@ -459,14 +459,30 @@ let currentVersions = [];
 let currentPills = [];
 
 window.addEventListener('message', (event) => {
-  if (!event.data || event.data.type !== 'select-version') return;
-  const file = currentVersions.find(f => f.name === event.data.file);
-  if (!file){
-    console.warn('설명 문서의 data-file과 일치하는 파일을 못 찾음:', event.data.file);
+  if (!event.data) return;
+
+  if (event.data.type === 'select-version') {
+    const file = currentVersions.find(f => f.name === event.data.file);
+    if (!file){
+      console.warn('설명 문서의 data-file과 일치하는 파일을 못 찾음:', event.data.file);
+      return;
+    }
+    const pillIdx = currentVersions.indexOf(file);
+    loadCodeInto(file, currentPills[pillIdx], currentPills);
     return;
   }
-  const pillIdx = currentVersions.indexOf(file);
-  loadCodeInto(file, currentPills[pillIdx], currentPills);
+
+  if (event.data.type === 'style-preview') {
+    // 설명 문서(iframe)의 커스터마이저가 만든 코드 조각을, 지금 코드 패널에
+    // 보이는 내용 중 같은 블록만 찾아서 실시간으로 갈아끼움 (미리보기용 —
+    // 실제 파일은 안 바뀜)
+    const current = codeBodyEl.textContent;
+    if (!/var CUTSCENE_MESSAGE_STYLE\s*=\s*\{[\s\S]*?\};/.test(current)) return;
+    codeBodyEl.textContent = current.replace(
+      /var CUTSCENE_MESSAGE_STYLE\s*=\s*\{[\s\S]*?\};/,
+      event.data.code
+    );
+  }
 });
 
 // 폴더 하나(파일+폴더 전부)를 가져옴
