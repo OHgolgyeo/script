@@ -19,42 +19,37 @@
 //
 // =============================================
 
+var CUTSCENE_DEFAULT_LEAD_SEC = 0;
+var CUTSCENE_DEFAULT_MODE = 'full';
 
-var CUTSCENE_DEFAULT_LEAD_SEC = 0; // 대기초 생략 시 기본값(0 = 즉시 재생)
-var CUTSCENE_DEFAULT_MODE = 'full'; // 모드 생략 시 기본값
- 
 // 채팅에 뜨는 안내 문구의 스타일 — 여기 값만 바꾸면 디자인이 바뀜
 var CUTSCENE_MESSAGE_STYLE = {
-  container: 'padding:6px 10px;background:#2b2b2b;border-radius:6px;',
+  container: 'display:inline-block;padding:6px 10px;background:#2b2b2b;border-radius:6px;',
   text: 'font-family:sans-serif;font-size:13px;color:#9ecbff;'
 };
- 
+
 function normalizeName(name){
   return (name || '').replace(/\s+/g, '');
 }
- 
+
 function findCharacterByLooseName(rawName){
   var target = normalizeName(rawName);
   return _.find(findObjs({ _type: 'character' }), function (c) {
     return normalizeName(c.get('name')) === target;
   });
 }
- 
+
 function buildCueMessage(url, startAt, mode){
   return '<div style="' + CUTSCENE_MESSAGE_STYLE.container + '">' +
     '<a href="' + url + '" target="_blank" style="' + CUTSCENE_MESSAGE_STYLE.text + 'text-decoration:none;">🎬 Playing a video · · ·</a>' +
     '<span style="display:none">CUE|' + url + '|' + startAt + '|' + mode + '</span>' +
     '</div>';
 }
- 
-// 시청 안내 문구("N초 뒤 영상을 시청합니다." / "영상을 시청합니다.") 생성
+
 function buildTimingPhrase(leadSec){
   return leadSec > 0 ? (leadSec + '초 뒤 영상을 시청합니다.') : '영상을 시청합니다.';
 }
- 
-// "!컷 " 뒤의 나머지 문자열을 콤마 기준으로 파싱.
-// 마지막 "저널이름" 부분은 따옴표로 감싸져 있으므로 먼저 떼어낸 뒤,
-// 남은 부분(URL, 대기초, 형태)을 콤마로 나눔.
+
 function parseCutArgs(rest){
   var targetRaw = null;
   var targetMatch = rest.match(/,\s*"([^"]*)"\s*$/);
@@ -62,7 +57,7 @@ function parseCutArgs(rest){
     targetRaw = targetMatch[1];
     rest = rest.slice(0, targetMatch.index);
   }
- 
+
   var parts = rest.split(',').map(function (s) { return s.trim(); });
   return {
     url: parts[0],
@@ -71,43 +66,31 @@ function parseCutArgs(rest){
     targetRaw: targetRaw
   };
 }
- 
-on('ready', function () {
-  log('[Roll20 Video Player] 스크립트 로드 완료.');
-});
 
 on('chat:message', function (msg) {
   if (msg.type !== 'api') return;
-  log('[Roll20 Video Player] api 메시지 수신: ' + msg.content);
 
   var cmdMatch = msg.content.match(/^!컷\s+(.+)$/);
-  if (!cmdMatch) {
-    log('[Roll20 Video Player] "!컷 " 패턴 매치 실패 - 무시됨');
-    return;
-  }
-  if (!playerIsGM(msg.playerid)) {
-    log('[Roll20 Video Player] GM이 아니라서 무시됨 (playerid: ' + msg.playerid + ')');
-    return;
-  }
- 
+  if (!cmdMatch) return;
+  if (!playerIsGM(msg.playerid)) return;
+
   var args = parseCutArgs(cmdMatch[1]);
   if (!args.url){
     sendChat('System', '/w gm 사용법: !컷 ?{영상 링크(확장자 포함)|}, ?{대기시간|}, ?{모드|full|map|window}, "?{저널이름|}"');
     return;
   }
- 
+
   var startAt = Date.now() + Math.round(args.leadSec * 1000);
   var cueMessage = buildCueMessage(args.url, startAt, args.mode);
- 
+
   if (args.targetRaw){
     var targetChar = findCharacterByLooseName(args.targetRaw);
     if (!targetChar){
       sendChat('System', '/w gm "' + args.targetRaw + '"라는 이름의 캐릭터를 못 찾았습니다.');
       return;
     }
-    // 따옴표로 감싸서 귓속말 대상만 정확히 지정 (/desc는 안 붙임 — /w와 조합이 안 맞음)
     sendChat('System', '/w "' + targetChar.get('name') + '" ' + cueMessage);
-    sendChat('System', '/w gm "' + targetChar.get('name') + '"가 ' + args.mode + ' 모드로 ' + buildTimingPhrase(args.leadSec));
+    sendChat('System', '/w gm "' + targetChar.get('name') + '"이(가) ' + args.mode + ' 모드로 ' + buildTimingPhrase(args.leadSec));
   } else {
     sendChat('', '/desc ' + cueMessage);
     sendChat('System', '/w gm 전원 ' + args.mode + ' 모드로 ' + buildTimingPhrase(args.leadSec));
