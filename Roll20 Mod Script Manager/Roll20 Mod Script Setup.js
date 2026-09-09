@@ -47,7 +47,7 @@
             try {
                 sessionStorage.setItem(CAMPAIGN_ID_KEY, id);
                 localStorage.setItem(CAMPAIGN_ID_KEY, id);
-                console.정보('[RMSM] captured campaign id from URL:', id, location.pathname);
+                console.info('[RMSM] captured campaign id from URL:', id, location.pathname);
             } catch (_) {}
         }
     })();
@@ -55,7 +55,7 @@
     // 게임 상세/설정 페이지에서는 ID 저장만 하고 UI 코드는 실행하지 않는다.
     // 실제 Manager 동작은 Roll20 VTT /editor/ 에서만 수행한다.
     if (!/^\/editor(?:\/|$)/.test(location.pathname)) {
-        console.정보('[RMSM] campaign id capture page only:', location.pathname);
+        console.info('[RMSM] campaign id capture page only:', location.pathname);
         return;
     }
 
@@ -349,6 +349,48 @@
             .replace(/(^|[^:])\/\/.*$/gm, '$1 ');
     }
 
+    // 파일 맨 위에 붙은 헤더 주석(블록 주석 1개 또는 연속된 // 줄)만 뽑아낸다.
+    // 실제 코드(변수 선언, on(...) 등)가 나오면 즉시 멈춘다.
+    function extractHeaderComment(src) {
+        const lines = String(src || '').split(/\r?\n/);
+        const out = [];
+        let i = 0;
+
+        while (i < lines.length && lines[i].trim() === '') i++;
+
+        if (i < lines.length && /^\s*\/\*/.test(lines[i])) {
+            while (i < lines.length) {
+                out.push(lines[i]);
+                if (/\*\//.test(lines[i])) { i++; break; }
+                i++;
+            }
+            return out.join('\n');
+        }
+
+        while (i < lines.length) {
+            const line = lines[i];
+
+            if (/^\s*\/\//.test(line)) {
+                out.push(line);
+                i++;
+                continue;
+            }
+
+            if (line.trim() === '') {
+                let j = i + 1;
+                while (j < lines.length && lines[j].trim() === '') j++;
+                if (j < lines.length && /^\s*\/\//.test(lines[j])) {
+                    i = j;
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        return out.join('\n');
+    }
+
     function extractStringConstants(src) {
         const map = {};
         const re = /\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*(['"`])([^'"`\r\n]{1,160})\2\s*;/g;
@@ -490,7 +532,7 @@
                 .replace(/&nbsp;/gi, ' ')
                 .replace(/\\n/g, ' ')
                 .replace(/\s+/g, ' ')
-                .replace(/^[\s:：\-–—|]+|[\s:：\-–—|]+$/g, '')
+                .replace(/^[\s:：\-–—|*]+|[\s:：\-–—|*]+$/g, '')
                 .trim()
                 .slice(0, 180);
         }
@@ -499,6 +541,34 @@
             return normalizeSyntax(String(s || '')
                 .replace(/[.,;!?。！？]+$/g, '')
                 .trim());
+        }
+
+        // 헤더 주석에 "!cmd 인자1, 인자2, 인자3" 처럼 구분자 없이 콤마로만
+        // 나열된 경우, 실제 코드가 이 명령어를 콤마로 분리해서 처리하는지 확인한다.
+        // 코드에서 확인되면(예: .split(',')) 좀 더 느슨한 기준으로 파라미터 목록으로 인정한다.
+        function commandUsesCommaSplit(root) {
+            if (!root) return false;
+            const esc = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const idx = structural.search(new RegExp(esc));
+            if (idx < 0) return false;
+            const window = structural.slice(Math.max(0, idx - 50), idx + 400);
+            return /\.split\(\s*(['"`])\s*,\s*\1|\.split\(\s*\/[^/\n]*,[^/\n]*\//.test(window);
+        }
+
+        // 구분자(:, -, |) 없이 공백만으로 이어지는 꼬리 텍스트가
+        // "주소, 받는이, 시간"처럼 짧은 명사 나열인지 판단한다.
+        // (문장 종결 어미가 없고, 각 조각이 짧으면 설명이 아니라 파라미터 목록으로 본다)
+        function looksLikeParamList(text, confirmedByCode) {
+            if (!text.includes(',') && !text.includes('，')) return false;
+            const parts = text.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+            if (parts.length < 2) return false;
+            const maxLen = confirmedByCode ? 20 : 12;
+            return parts.every(p =>
+                p.length > 0 &&
+                p.length <= maxLen &&
+                !/[.!?。！？]$/.test(p) &&
+                !/(다|요|니다|세요|함|음)$/.test(p)
+            );
         }
 
         function upsert(syntax, evidence, confidence, description='', sourceKind='code') {
@@ -558,7 +628,9 @@
 
         function parseCommandFromCommentLine(line) {
             line = String(line || '')
-                .replace(/^\s*(?:\/\/+|\/\*+|\*+|\*\/)/, '')
+                // "//", "/*", "*", "*/" 같은 주석 기호가 연달아 붙어있는 경우
+                // (예: "// * !cmd", "/** * !cmd") 전부 벗겨낸다.
+                .replace(/^(?:\s*(?:\/\/+|\/\*+|\*\/|\*))+/, '')
                 .replace(/<[^>]+>/g, ' ')
                 .replace(/\\n/g, ' ')
                 .replace(/\s+/g, ' ')
@@ -574,11 +646,42 @@
             const rootMatch = rest.match(/^(![^\s,;:|]+)/);
             if (!rootMatch) return null;
 
-            const root = normalizeCommandSyntax(rootMatch[1]);
-            let consumed = root.length;
+            // 명령어 바로 뒤에 구분자(-, :, ：)가 공백 없이 붙어있으면
+            // (예: "!명령어- 설명") 구분자는 명령어가 아니라 설명 구분자이므로 떼어낸다.
+            let rawRoot = rootMatch[1];
+            const trailDelim = rawRoot.match(/[-:：]+$/);
+            if (trailDelim && rawRoot.length > trailDelim[0].length) {
+                rawRoot = rawRoot.slice(0, -trailDelim[0].length);
+            }
+
+            const root = normalizeCommandSyntax(rawRoot);
+            if (!root) return null;
+            let consumed = rawRoot.length;
             let syntax = root;
 
             const tail = rest.slice(consumed).trim();
+
+            // 구분자(:, -, |) 없이 공백만으로 이어지고, 콤마로 여러 개의 짧은 명사가
+            // 나열된 경우(예: "!컷 주소, 받는이, 시간")는 설명이 아니라 명령어 구문(파라미터 목록)
+            // 으로 취급한다. 실제 코드가 이 명령어를 콤마로 분리해서 처리하는지도 함께 확인한다.
+            // 단, 목록 뒤에 " - 설명"처럼 구분자로 이어지는 진짜 설명이 붙어있으면 거기서 자른다.
+            if (tail && !/^[-–—:：|]/.test(tail)) {
+                const delimSplit = tail.match(/\s[-–—:：|]\s/);
+                const listPart = delimSplit ? tail.slice(0, delimSplit.index).trim() : tail;
+                const afterDelim = delimSplit ? tail.slice(delimSplit.index).trim() : '';
+
+                const confirmedByCode = commandUsesCommaSplit(root);
+                if (listPart && looksLikeParamList(listPart, confirmedByCode)) {
+                    const descTail = afterDelim
+                        .replace(/^[-–—:：|]\s*/, '')
+                        .trim();
+                    const descParts = [prefix, descTail].filter(Boolean);
+                    return {
+                        syntax: normalizeCommandSyntax(syntax + ' ' + listPart),
+                        description: cleanDescription(descParts.join(' '))
+                    };
+                }
+            }
 
             // option/subcommand/argument tokens만 명령에 포함
             // 자연어 prose는 설명으로 넘긴다.
@@ -595,7 +698,7 @@
                 // 영어 prose 시작
                 if (/^(?:in\s+chat|in\s+the\s+chat|to\s+use|for\s+use|to\b|for\b|with\b)\b/i.test(remain)) break;
                 // 문장부호 설명 시작
-                if (/^(?:[-–—:：|])\s+/.test(remain)) break;
+                if (/^(?:[-–—:：|])\s*/.test(remain)) break;
 
                 const tm = remain.match(tokenRe);
                 if (!tm) break;
@@ -631,26 +734,36 @@
         }
 
         // ---------------------------------------------------
-        // 1순위: 주석에서 명령어 수집
+        // 1순위: 파일 맨 위 헤더 주석에서 명령어 수집
         // ---------------------------------------------------
-        const commentBlocks = [
-            ...(source.match(/\/\/[^\n]*/g) || []),
-            ...(source.match(/\/\*[\s\S]*?\*\//g) || [])
-        ];
+        function collectFromComments(text) {
+            const blocks = [
+                ...(text.match(/\/\/[^\n]*/g) || []),
+                ...(text.match(/\/\*[\s\S]*?\*\//g) || [])
+            ];
 
-        commentBlocks.forEach(block => {
-            String(block).split(/\n/).forEach(line => {
-                if (!line.includes('!')) return;
-                const parsed = parseCommandFromCommentLine(line);
-                if (!parsed) return;
+            blocks.forEach(block => {
+                String(block).split(/\n/).forEach(line => {
+                    if (!line.includes('!')) return;
+                    const parsed = parseCommandFromCommentLine(line);
+                    if (!parsed) return;
 
-                // "!foo in chat."는 root command + 설명으로 처리
-                upsert(parsed.syntax, 'comment', 'comment', parsed.description, 'comment');
+                    // "!foo in chat."는 root command + 설명으로 처리
+                    upsert(parsed.syntax, 'comment', 'comment', parsed.description, 'comment');
+                });
             });
-        });
+        }
+
+        const headerComment = extractHeaderComment(source);
+        collectFromComments(headerComment);
+
+        // 헤더 주석에 명령어가 하나도 없을 때만 파일 전체 주석 + 코드 추론으로 폴백
+        const headerOnly = commands.size > 0;
+        if (!headerOnly) collectFromComments(source);
 
         // ---------------------------------------------------
         // 2순위: 본문 실행 코드에서 주석에 없는 명령 보충
+        // (헤더 주석에서 이미 명령어를 찾았다면 코드 추론은 건너뛴다)
         // ---------------------------------------------------
         function codeAdd(syntax, evidence, confidence='confirmed', description='') {
             syntax = normalizeCommandSyntax(syntax);
@@ -669,6 +782,7 @@
 
         let re, m;
 
+        if (!headerOnly) {
         re = /\b(?:msg\.)?content\s*(?:===|==)\s*(['"`])(![^'"`\r\n]{0,180})\1/g;
         while ((m = re.exec(structural))) codeAdd(m[2], 'content equality');
 
@@ -743,9 +857,10 @@
                 if (!commands.has(syntax)) codeAdd(syntax, 'subcommand token', 'inferred');
             });
         }
+        } // if (!headerOnly)
 
         // ---------------------------------------------------
-        // 본문 help 문자열은 설명 보충 전용
+        // 본문 help 문자열은 설명 보충 전용 (헤더 주석만으로 충분하면 건너뜀)
         // ---------------------------------------------------
         const helpLines = [];
 
@@ -756,6 +871,8 @@
 
             text.split(/\n/).forEach(line => {
                 line = String(line || '')
+                    // 주석 기호("//", "/*", "*", "*/")가 앞에 남아있으면 벗겨낸다.
+                    .replace(/^(?:\s*(?:\/\/+|\/\*+|\*\/|\*))+/, '')
                     .replace(/<[^>]+>/g, ' ')
                     .replace(/\\n/g, ' ')
                     .replace(/\s+/g, ' ')
@@ -765,10 +882,13 @@
             });
         }
 
+        // 헤더 주석만으로 명령어를 찾았다면, 설명 보충도 헤더 주석 범위 안에서만 찾는다.
+        const helpSearchText = headerOnly ? headerComment : source;
         const literalRe = /(['"`])([^'"`\r\n]{0,520})\1/g;
-        while ((m = literalRe.exec(source))) {
+        while ((m = literalRe.exec(helpSearchText))) {
             if (m[2].includes('!')) addHelp(m[2]);
         }
+        if (headerOnly) addHelp(headerComment);
 
         function findHelpDescription(command) {
             const cmd = normalizeCommandSyntax(command);
