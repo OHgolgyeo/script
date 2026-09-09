@@ -2,10 +2,12 @@
 // @name         Roll20 Portrait for Emotion
 // @namespace    https://github.com/OHgolgyeo/script
 // @version      1.0
-// @description  "대사 @표정" 또는 "@표정"만 입력했을 때, 대사는 그대로 보내고 "@표정" 태그는 "!@표정"으로 바꿔서 따로 보내 화면에서 안 보이게 함.
 // @author       오골계 (https://x.com/5golgyeo)
+// @description  "대사 @표정" 또는 "@표정"만 입력했을 때, 대사는 그대로 보내고 "@표정" 태그는 "!@표정"으로 바꿔서 따로 보내 화면에서 안 보이게 함.
 // @match        https://app.roll20.net/editor*
 // @grant        none
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Portrait%20Album%20%26%20Visual%20Dialogue/Roll20%20Portrait%20for%20Emotion.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Portrait%20Album%20%26%20Visual%20Dialogue/Roll20%20Portrait%20for%20Emotion.js
 // ==/UserScript==
 
 (function () {
