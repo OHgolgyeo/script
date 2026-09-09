@@ -100,9 +100,11 @@
 
   .preview-box{
     margin: 4px 0 10px;
-    padding: 10px;
-    background: #1a1a1a;
-    border-radius: 8px;
+    padding: 10px 12px;
+    background: #f7f7f7;
+    border: 1px solid #e2e2e2;
+    border-radius: 3px;
+    text-align: center; /* 롤20 /desc 메시지가 중앙 정렬로 표시됨 */
   }
 
   .code-out{
@@ -116,8 +118,9 @@
     padding: 12px 14px;
     border-radius: 8px;
     margin: 0;
-    overflow-x: auto;
-    white-space: pre;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
   .copy-btn{
     position: absolute;
@@ -167,10 +170,10 @@
         폰트
         <select id="cFont">
           <option value="sans-serif">기본 sans-serif</option>
+          <option value="Press Start 2P">Press Start 2P</option>
           <option value="'IBM Plex Sans KR', sans-serif">IBM Plex Sans KR</option>
           <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
           <option value="monospace">고정폭(monospace)</option>
-          <option value="serif">명조(serif)</option>
         </select>
       </div>
     </div>
@@ -200,17 +203,22 @@
     var size = sizeInput.value;
     var font = fontInput.value;
 
-    preview.style.padding = '6px 10px';
+    // 미리보기 화면에서만 롤20의 실제 렌더링(가운데 정렬)을 흉내내기 위해
+    // display:inline-block을 씀 — 이건 코드 텍스트엔 안 들어감(원본 코드
+    // 형식 그대로 유지). 나머지 값(패딩 등)은 실제 코드와 동일하게 맞춤.
+    preview.style.display = 'inline-block';
+    preview.style.padding = '6px 90px';
     preview.style.background = bg;
     preview.style.borderRadius = '6px';
     preview.style.color = text;
     preview.style.fontFamily = font;
     preview.style.fontSize = size + 'px';
+    preview.style.fontStyle = 'italic';
 
     var code =
       "var CUTSCENE_MESSAGE_STYLE = {\n" +
-      "  container: 'padding:6px 10px;background:" + bg + ";border-radius:6px;',\n" +
-      "  text: 'font-family:" + font + ";font-size:" + size + "px;color:" + text + ";'\n" +
+      "  container: 'padding:6px 90px;background:" + bg + ";border-radius:6px;',\n" +
+      "  text: 'font-family:" + font + ";font-size:" + size + "px;color:" + text + ";font-style:italic;'\n" +
       "};";
     codeOut.textContent = code;
 
