@@ -24,7 +24,7 @@ var CUTSCENE_DEFAULT_MODE = 'full';
 
 // 채팅에 뜨는 안내 문구의 스타일 — 여기 값만 바꾸면 디자인이 바뀜
 var CUTSCENE_MESSAGE_STYLE = {
-  container: 'padding:6px 90px;background:#2b2b2b;border-radius:6px;',
+  container: 'padding:6px 10px;background:#2b2b2b;border-radius:6px;',
   text: 'font-family:sans-serif;font-size:13px;color:#9ecbff;font-style:italic;'
 };
 
