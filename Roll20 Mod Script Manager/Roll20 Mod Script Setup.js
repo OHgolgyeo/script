@@ -11,8 +11,8 @@
 // @match        https://app.roll20.net/campaigns/settings/*
 // @grant        unsafeWindow
 // @run-at       document-start
-// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/main/tampermonkey-scripts/Roll20%20Video%20Player.user.js
-// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/main/tampermonkey-scripts/Roll20%20Video%20Player.user.js
+// @updateURL    https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Mod%20Script%20Manager/Roll20%20Mod%20Script%20Setup.js
+// @downloadURL  https://raw.githubusercontent.com/OHgolgyeo/script/refs/heads/main/Roll20%20Mod%20Script%20Manager/Roll20%20Mod%20Script%20Setup.js
 // ==/UserScript==
 
 (function () {
@@ -47,7 +47,7 @@
             try {
                 sessionStorage.setItem(CAMPAIGN_ID_KEY, id);
                 localStorage.setItem(CAMPAIGN_ID_KEY, id);
-                console.info('[RMSM] captured campaign id from URL:', id, location.pathname);
+                console.정보('[RMSM] captured campaign id from URL:', id, location.pathname);
             } catch (_) {}
         }
     })();
@@ -55,7 +55,7 @@
     // 게임 상세/설정 페이지에서는 ID 저장만 하고 UI 코드는 실행하지 않는다.
     // 실제 Manager 동작은 Roll20 VTT /editor/ 에서만 수행한다.
     if (!/^\/editor(?:\/|$)/.test(location.pathname)) {
-        console.info('[RMSM] campaign id capture page only:', location.pathname);
+        console.정보('[RMSM] campaign id capture page only:', location.pathname);
         return;
     }
 
