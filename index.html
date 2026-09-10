@@ -209,6 +209,7 @@
   .desc-panel{
     width: 500px;
     flex-shrink:0;
+    align-self: flex-start;
     padding: 22px 24px 22px 34px;
     border-right: none;
   }
@@ -378,7 +379,7 @@
     .app{ flex-direction:column; }
     .sidebar{ width:100%; max-height: 40vh; border-right:none; border-bottom:1px solid var(--border); }
     .viewer-body{ flex-direction: column; }
-    .desc-panel{ width:100%; border-right:none; border-bottom:1px solid var(--border); }
+    .desc-panel{ width:100%; max-height: 30vh; overflow-y:auto; border-right:none; border-bottom:1px solid var(--border); }
     .viewer-header{ padding-left:18px; padding-right:18px; }
     .desc-panel{ padding-left:18px; padding-right:18px; }
     .code-toolbar{ padding-left:18px; padding-right:18px; }
@@ -456,17 +457,9 @@ let activeItemEl = null;
 // 체크박스가 postMessage로 신호를 보내면 여기서 파일을 찾아 로드함
 let currentVersions = [];
 let currentPills = [];
-let currentDescIframe = null;
 
 window.addEventListener('message', (event) => {
   if (!event.data) return;
-
-  if (event.data.type === 'iframe-height') {
-    if (currentDescIframe && event.source === currentDescIframe.contentWindow) {
-      currentDescIframe.style.height = event.data.height + 'px';
-    }
-    return;
-  }
 
   if (event.data.type === 'select-version') {
     const file = currentVersions.find(f => f.name === event.data.file);
@@ -490,45 +483,26 @@ window.addEventListener('message', (event) => {
       event.data.code
     );
   }
+
+  if (event.data.type === 'portrait-vd-setting-preview') {
+    // Portrait Visual Dialogue info의 설정기가 만든 vd_setting 전체 블록을
+    // 현재 코드 패널 안의 같은 블록과 실시간으로 교체합니다.
+    const current = codeBodyEl.textContent;
+    const pattern = /const vd_setting\s*=\s*\{[\s\S]*?\n\};/;
+    if (!pattern.test(current)) return;
+    codeBodyEl.textContent = current.replace(pattern, event.data.code);
+    return;
+  }
 });
 
 // 폴더 하나(파일+폴더 전부)를 가져옴
-// api.github.com 목록 조회는 시간당 60회 제한이 있어서, 짧은 시간 안에
-// 같은 경로를 반복 요청하면 403이 뜸. 브라우저에 잠깐(5분) 캐싱해서
-// 새로고침을 여러 번 해도 매번 다시 API를 안 부르게 함.
-const GH_CACHE_TTL_MS = 5 * 60 * 1000;
-
-function readGhCache(path){
-  try {
-    const raw = localStorage.getItem('gh-cache:' + path);
-    if (!raw) return null;
-    const { time, data } = JSON.parse(raw);
-    if (Date.now() - time > GH_CACHE_TTL_MS) return null;
-    return data;
-  } catch (e) {
-    return null;
-  }
-}
-
-function writeGhCache(path, data){
-  try {
-    localStorage.setItem('gh-cache:' + path, JSON.stringify({ time: Date.now(), data }));
-  } catch (e) { /* 저장 공간 부족 등은 무시 — 캐싱 실패해도 API 호출로 정상 동작함 */ }
-}
-
 async function fetchEntries(path){
-  const cached = readGhCache(path);
-  if (cached) return cached;
-
   const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`);
   if (!res.ok){
     if (res.status === 404) return [];
-    if (res.status === 403) throw new Error(`${path} 목록을 가져오지 못함 (403 — 깃허브 API 시간당 요청 한도 초과, 잠시 후 다시 시도해주세요)`);
     throw new Error(`${path} 목록을 가져오지 못함 (${res.status})`);
   }
-  const data = await res.json();
-  writeGhCache(path, data);
-  return data;
+  return await res.json();
 }
 
 // 폴더 안의 파일만 가져옴 (하위 폴더는 무시)
@@ -634,37 +608,90 @@ function renderHtmlDescription(htmlContent){
 
   const iframe = document.createElement('iframe');
   iframe.className = 'desc-frame';
-  iframe.setAttribute('scrolling', 'no');
-  currentDescIframe = iframe;
 
   // 설명은 iframe 안에 렌더링되므로 부모 페이지의 줄바꿈 CSS가 전달되지 않습니다.
   // info HTML 안에도 어절 단위 줄바꿈 규칙을 강제로 추가합니다.
-  // 또한 iframe이 자체 스크롤 없이 항상 내용 높이에 맞도록, iframe 안에서
-  // 직접 자기 높이를 재서 부모에게 postMessage로 알려주는 스크립트도 심음
-  // (폰트 로딩 지연, 커스터마이저 조작 등으로 크기가 바뀔 때마다 갱신됨)
-  const wrapInject = `
+  const wrapStyle = `
     <style id="archive-word-wrap">
       html, body, p, li, div, span, h1, h2, h3, h4, h5, h6, a, strong, em {
         word-break: keep-all !important;
         overflow-wrap: break-word !important;
       }
-    </style>
-    <script>
-      (function(){
-        function reportHeight(){
-          parent.postMessage({ type: 'iframe-height', height: document.documentElement.scrollHeight }, '*');
-        }
-        window.addEventListener('load', reportHeight);
-        new ResizeObserver(reportHeight).observe(document.body);
-        if (document.fonts && document.fonts.ready) document.fonts.ready.then(reportHeight);
-        setTimeout(reportHeight, 300);
-      })();
-    <\/script>`;
+    </style>`;
   const srcdocHtml = /<\/head>/i.test(htmlContent)
-    ? htmlContent.replace(/<\/head>/i, wrapInject + '</head>')
-    : wrapInject + htmlContent;
+    ? htmlContent.replace(/<\/head>/i, wrapStyle + '</head>')
+    : wrapStyle + htmlContent;
 
   iframe.srcdoc = srcdocHtml;
+
+  iframe.addEventListener('load', () => {
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+
+      let resizePending = false;
+
+      const updateIframeHeight = () => {
+        if (resizePending) return;
+        resizePending = true;
+        requestAnimationFrame(() => {
+          resizePending = false;
+          try {
+            const body = doc.body;
+            const root = doc.documentElement;
+
+            // 이전에 늘려놓은 iframe 높이가 그대로 뷰포트 높이로 잡혀서
+            // scrollHeight 측정에 바닥값처럼 끼어든다. 그래서 설정 패널을
+            // 접어도 documentElement.scrollHeight가 줄어들지 않고 예전
+            // 높이를 그대로 돌려주는 문제가 있었다. 측정 직전에 높이를
+            // 잠깐 0으로 되돌려서 진짜 콘텐츠 높이를 다시 재는 것으로 고친다.
+            iframe.style.height = '0px';
+
+            const h = Math.max(
+              body ? body.scrollHeight : 0,
+              body ? body.offsetHeight : 0,
+              root ? root.scrollHeight : 0,
+              root ? root.offsetHeight : 0
+            );
+            iframe.style.height = Math.max(40, h) + 'px';
+          } catch (e) { /* 무시 */ }
+        });
+      };
+
+      // 첫 렌더링 높이
+      updateIframeHeight();
+
+      // info 안에서 설정 패널 접기/펼치기처럼 레이아웃이 바뀌면 자동으로 다시 계산
+      if ('ResizeObserver' in window) {
+        const ro = new ResizeObserver(() => updateIframeHeight());
+        if (doc.documentElement) ro.observe(doc.documentElement);
+        if (doc.body) ro.observe(doc.body);
+      }
+
+      // ResizeObserver가 잡지 못하는 DOM 변화도 보조 감시
+      if ('MutationObserver' in window && doc.body) {
+        const mo = new MutationObserver(() => updateIframeHeight());
+        mo.observe(doc.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true
+        });
+      }
+
+      // iframe 내부에서 직접 resize 이벤트를 보내는 경우도 반영
+      iframe.contentWindow.addEventListener('resize', updateIframeHeight);
+
+      // 폰트 로딩 뒤 높이가 달라질 수 있으므로 한 번 더 계산
+      if (doc.fonts && doc.fonts.ready) {
+        doc.fonts.ready.then(updateIframeHeight).catch(() => {});
+      }
+
+      setTimeout(updateIframeHeight, 50);
+      setTimeout(updateIframeHeight, 250);
+    } catch (e) { /* 무시 */ }
+  });
+
   descBodyEl.appendChild(iframe);
 }
 
