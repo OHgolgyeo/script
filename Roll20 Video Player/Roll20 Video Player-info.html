@@ -103,19 +103,6 @@
     border-radius: 3px;
     text-align: center; /* 롤20 /desc 메시지가 중앙 정렬로 표시됨 */
   }
-
-  .code-out pre{
-    background: #100e0a;
-    color: #d8cfb8;
-    font-size: 12px;
-    line-height: 1.6;
-    padding: 12px 14px;
-    border-radius: 8px;
-    margin: 0;
-    overflow-x: hidden;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
 </style>
 </head>
 <body>
@@ -160,10 +147,6 @@
     <div class="preview-box">
       <a id="preview" href="#" target="_blank" style="text-decoration:none;">🎬 Playing a video · · ·</a>
     </div>
-
-    <div class="code-out">
-      <pre id="codeOut"></pre>
-    </div>
   </div>
 
 <script>
@@ -172,7 +155,6 @@
   var sizeInput = document.getElementById('cSize');
   var fontInput = document.getElementById('cFont');
   var preview = document.getElementById('preview');
-  var codeOut = document.getElementById('codeOut');
 
   function update(){
     var bg = bgInput.value;
@@ -197,7 +179,6 @@
       "  container: 'padding:6px 10px;background:" + bg + ";border-radius:6px;',\n" +
       "  text: 'font-family:" + font + ";font-size:" + size + "px;color:" + text + ";font-style:italic;'\n" +
       "};";
-    codeOut.textContent = code;
 
     // 부모 페이지(스크립트 도서관)의 코드 패널에 실시간 미리보기 반영 요청
     parent.postMessage({ type: 'style-preview', code: code }, '*');
