@@ -9,6 +9,8 @@
 -->
 <meta name="distribution-blog" content="">
 
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.2/src/regular/style.css">
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans+KR:wght@400;500&display=swap');
 
@@ -71,6 +73,7 @@
     justify-content:space-between;
     gap:12px;
     padding-right:30px;
+    cursor: pointer;
   }
 
   .vd-config-summary{
@@ -99,8 +102,7 @@
   }
 
   #toggle-config:hover{
-    background:#fdf1f6;
-    border-radius:50%;
+    color:#b83d75;
   }
 
   .license-badge{
@@ -175,6 +177,12 @@
     gap: 10px;
   }
 
+  .config-row-2{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
   .vd-config label{
     display: block;
     margin: 0 0 10px;
@@ -208,6 +216,20 @@
     padding: 4px;
   }
 
+  /* 시스템 기본 드롭다운 대신 페이지 톤에 맞춘 커스텀 화살표 */
+  .vd-config select{
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background-color: #fff !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23d8558f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right 10px center !important;
+    background-size: 11px 7px !important;
+    padding-right: 30px !important;
+    cursor: pointer;
+  }
+
   .vd-config textarea{
     resize: vertical;
     font-family: Consolas, "Courier New", monospace;
@@ -238,40 +260,243 @@
     font-weight: 400 !important;
   }
 
-  .config-output{
-    margin-top: 8px;
-    padding-top: 14px;
-    border-top: 1px solid #f4dfe8;
+  /* ---------- 캐릭터별 설정 (접고 펼치는 리스트) ---------- */
+  .char-list{ margin-top: 10px; }
+
+  .char-card{
+    padding: 12px 0;
+    border-top: 1px dashed #f0d4e1;
+  }
+  .char-card:first-child{
+    border-top: 0;
+    padding-top: 0;
   }
 
-  .output-head{
+  .char-head{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .char-head .char-name{
+    flex: 1;
+    width: auto;
+  }
+
+  .icon-btn{
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #d8558f;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+    align-self: center;
+  }
+  .icon-btn:hover{ color: #b83d75; }
+  .icon-btn.small{ font-size: 16px; }
+  .icon-btn.danger{ color: #c23; }
+  .icon-btn.danger:hover{ color: #a11; }
+
+  /* 접기/펼치기 아이콘 - 테두리/배경 없이 아이콘만 */
+  .toggle-btn{
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #d8558f;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    align-self: center;
+  }
+  .toggle-btn:hover{ color: #b83d75; }
+  .toggle-btn.small{ font-size: 16px; }
+
+  /* 접었을 때 박스로 감싸지 않고, 펼치면 내용이 이어지는 느낌으로 */
+  .char-body.collapsed,
+  .sub-body.collapsed{
+    display: none;
+  }
+
+  .sub-section{
+    margin: 10px 0 0 6px;
+    padding-left: 14px;
+    border-left: 2px solid #f6d7e4;
+  }
+
+  .sub-head{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #a9647f;
     margin-bottom: 8px;
   }
 
-  .output-head h4{
+  .standing-row,
+  .chat-row{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .row-label{
+    flex-shrink: 0;
+    width: 52px;
+    font-size: 12.5px;
+    color: #555;
+  }
+
+  .standing-row .row-label{
+    width: 110px;
+  }
+
+  .row-spacer{
+    flex-shrink: 0;
+    width: 14px;
+    height: 16px;
+    visibility: hidden;
+  }
+
+  .mini-label{
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #a9647f;
+    white-space: nowrap;
+  }
+
+  .mini-note{
+    margin: 4px 0 0;
+    font-size: 11.5px;
+    color: #b298a4;
+    font-style: italic;
+  }
+
+  .standing-row input[type="text"],
+  .standing-row input[type="number"]{
+    width: 0;
+    flex: 1 1 0 !important;
+  }
+
+  .standing-row input[type="text"].expr-name{
+    flex: 0 0 110px !important;
+    width: 110px !important;
+  }
+
+  .chat-row select{
+    flex: 1 1 auto !important;
+    width: auto !important;
+  }
+
+  .group-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .clickable-head{
+    cursor: pointer;
+  }
+  .group-head h4{
     margin: 0;
   }
 
-  #copy-config{
+  .text-style-row{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .size-input{
+    flex: 0 0 60px !important;
+    width: 60px !important;
+  }
+
+  /* 컬러피커 옆에 보여주는 헥스 코드 칸 */
+  .hex-input{
+    flex: 0 0 76px !important;
+    width: 76px !important;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  /* 동그란 컬러피커 */
+  .round-color{
+    -webkit-appearance: none;
+    appearance: none;
+    flex-shrink: 0;
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    padding: 0 !important;
+    border: 1px solid #e6c8d5;
+    border-radius: 50% !important;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .round-color::-webkit-color-swatch-wrapper{ padding: 0; }
+  .round-color::-webkit-color-swatch{ border: none; border-radius: 50%; }
+  .round-color::-moz-color-swatch{ border: none; border-radius: 50%; }
+
+  .add-btn{
+    margin-top: 4px;
     border: 1px solid #d8558f;
     border-radius: 999px;
     background: #fff;
     color: #d8558f;
-    padding: 6px 12px;
-    cursor: pointer;
+    padding: 6px 14px;
     font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
   }
+  .add-btn:hover{ background: #fdf1f6; }
 
-  #copy-config:hover{
-    background: #fdf1f6;
+  #add-character{ margin-top: 12px; }
+
+  .collapse-footer{
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px dashed #f0d4e1;
+    text-align: center;
   }
+  .footer-collapse-btn{
+    border: none;
+    background: transparent;
+    padding: 2px 4px;
+    font: inherit;
+    font-size: 12px;
+    color: #a9647f;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .footer-collapse-btn:hover{ color: #b83d75; }
+  .footer-collapse-btn i{ font-size: 11px; }
 
-  @media (max-width: 720px){
+  /* 이 문서는 보통 폭이 좁은 사이드 패널(iframe) 안에서 열리므로(대략 440px 안팎),
+     720px 기준으로 접으면 항상 1칸으로만 보인다. 실제로 더 좁아졌을 때만 접히게 낮춘다. */
+  @media (max-width: 380px){
     .config-row{
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 320px){
+    .config-row-2{
       grid-template-columns: 1fr;
     }
   }
@@ -286,7 +511,8 @@
     표정 커멘드를 이용해 프로필 사진과 스탠딩을 교체할 수 있는 모드 스크립트입니다.<br>
     이곳에 양천일염(@trpg_kibkibe)님의 visual_dialogue.js를 수정한 Roll20 Portrait Visual Dialogue.js를 적용할 수 있습니다.<br>
     추가로 O님의 Roll20 Auto-Exclaim for Emotion을 수정한 Roll20 Portrait for Emotion.js를 설치하면 포트레이스와 스탠딩 모두에 적용할 수 있습니다.<br>
-    아래 옵션을 원하는 값으로 바꾸면 <strong>vd_setting</strong> 코드가 자동으로 생성됩니다.<br>
+    아래 옵션을 원하는 값으로 바꾸면 <strong>vd_setting</strong> 코드가 자동으로 생성되어
+    오른쪽 코드 영역에 바로 반영됩니다.<br>
     Visual Dialogue.js의 맵 세팅 방법은 원본과 동일하오니, 원본을 참고해주시기 바랍니다.<br><br>
 
     <strong>원본 / 참고</strong><br>
@@ -314,232 +540,214 @@
     <div class="vd-config-head">
       <div>
         <h3>Visual Dialogue 설정</h3>
-        <p class="vd-config-summary">Portrait Visual Dialogue의 스탠딩·텍스트·대사 진행 옵션을 설정합니다.</p>
+        <p class="vd-config-summary">스탠딩·텍스트·대사 진행 옵션을 설정합니다.</p>
       </div>
-      <button type="button" id="toggle-config" aria-expanded="false" aria-label="설정 펼치기" title="설정 펼치기">▼</button>
+      <button type="button" id="toggle-config" aria-expanded="false" aria-label="설정 펼치기" title="설정 펼치기"><i class="ph ph-caret-double-down"></i></button>
     </div>
     <div class="vd-config-body">
 
     <div class="config-group">
-      <h4>스탠딩</h4>
-
-      <label>
-        <span>최대 스탠딩 수</span>
-        <input type="number" id="cfg-max-number" value="5" min="1">
-        <small>한 화면에 동시에 표시할 수 있는 스탠딩 수입니다.</small>
-      </label>
-
-      <div class="config-row">
-        <label>
-          <span>스탠딩 가로</span>
-          <input type="number" id="cfg-width" value="420" min="1">
-        </label>
-        <label>
-          <span>스탠딩 세로</span>
-          <input type="number" id="cfg-height" value="420" min="1">
-        </label>
-        <label>
-          <span>화면 안 최소 노출 너비</span>
-          <input type="number" id="cfg-fit-width" value="200" min="1">
-        </label>
+      <div class="group-head">
+        <h4>스탠딩</h4>
+        <button type="button" class="toggle-btn small" id="toggle-standing-config" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
       </div>
 
-      <label class="check-line">
-        <input type="checkbox" id="cfg-use-emotion" checked>
-        <span><strong>표정별 스탠딩 사용</strong> — 켜면 Portrait Album의 표정별 스탠딩을 사용하고, 끄면 기본 스탠딩만 사용합니다.</span>
-      </label>
+      <div class="sub-body collapsed" id="standing-config-body">
+        <div class="config-row-2">
+          <label>
+            <span>스탠딩 수</span>
+            <input type="number" id="cfg-max-number" value="5" min="1">
+            <small>한 화면에 동시에 표시할 수 있는 스탠딩 수입니다.</small>
+          </label>
+          <label>
+            <span>화면 안 최소 노출 너비</span>
+            <input type="number" id="cfg-fit-width" value="200" min="1">
+          </label>
+        </div>
 
-      <label class="check-line">
-        <input type="checkbox" id="cfg-show-extra">
-        <span><strong>엑스트라 스탠딩 표시</strong> — 저널에 없는 <code>/as</code> 화자도 스탠딩을 표시합니다.</span>
-      </label>
+        <div class="config-row-2">
+          <label>
+            <span>가로</span>
+            <input type="number" id="cfg-width" value="420" min="1">
+          </label>
+          <label>
+            <span>세로</span>
+            <input type="number" id="cfg-height" value="420" min="1">
+          </label>
+        </div>
 
-      <label>
-        <span>기존 카드덱 fallback</span>
-        <input type="text" id="cfg-fallback-deck" value="standings">
-        <small>Portrait Album에 이미지가 없을 때 찾을 기존 카드덱입니다. 사용하지 않으려면 비워두세요.</small>
-      </label>
+        <label class="check-line">
+          <input type="checkbox" id="cfg-use-emotion" checked>
+          <span><strong>표정별 스탠딩 사용</strong> — 켜면 Portrait Album의 표정별 스탠딩을 사용하고, 끄면 기본 스탠딩만 사용합니다.</span>
+        </label>
 
-      <label>
-        <span>엑스트라 카드덱 별칭</span>
-        <input type="text" id="cfg-extra-aliases" value="extra, 엑스트라, NPC">
-        <small>셋 중 실제 존재하는 카드덱을 자동으로 찾습니다. 쉼표로 더 추가할 수 있습니다.</small>
-      </label>
+        <label class="check-line">
+          <input type="checkbox" id="cfg-show-extra">
+          <span><strong>엑스트라 스탠딩 표시</strong> — 저널에 없는 <code>/as</code> 화자도 스탠딩을 표시합니다.</span>
+        </label>
 
-      <label>
-        <span>스탠딩 제외 화자</span>
-        <input type="text" id="cfg-ignore-list" value="GM">
-        <small>스탠딩을 만들지 않을 이름입니다. 여러 명은 쉼표로 구분합니다.</small>
-      </label>
+        <label>
+          <span>기본 카드덱</span>
+          <input type="text" id="cfg-fallback-deck" value="standings">
+          <small>캐릭터들의 기본 스탠딩만 모아두는 카드덱입니다. 사용하지 않을 시 비워주세요.</small>
+        </label>
 
-      <label>
-        <span>사용 페이지</span>
-        <input type="text" id="cfg-page-list" value="conversation,intro">
-        <small>여러 페이지는 쉼표로 구분합니다.</small>
-      </label>
+        <label>
+          <span>엑스트라 카드덱 별칭</span>
+          <input type="text" id="cfg-extra-aliases" value="extra, 엑스트라, NPC">
+          <small>셋 중 실제 존재하는 카드덱을 자동으로 찾습니다. 쉼표로 더 추가할 수 있습니다.</small>
+        </label>
+
+        <label>
+          <span>스탠딩 제외 화자</span>
+          <input type="text" id="cfg-ignore-list" value="GM">
+          <small>스탠딩을 만들지 않을 이름입니다. 여러 명은 쉼표로 구분합니다.</small>
+        </label>
+
+        <label>
+          <span>사용 페이지</span>
+          <input type="text" id="cfg-page-list" value="conversation,intro">
+          <small>여러 페이지는 쉼표로 구분합니다.</small>
+        </label>
+      </div>
     </div>
 
     <div class="config-group">
-      <h4>캐릭터 기본 텍스트</h4>
+      <div class="group-head">
+        <h4>캐릭터 텍스트</h4>
+        <button type="button" class="toggle-btn small" id="toggle-char-text" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
+      </div>
 
-      <div class="config-row">
-        <label>
-          <span>이름 크기</span>
-          <input type="number" id="cfg-char-name-size" value="18" min="1">
-        </label>
-        <label>
-          <span>이름 색</span>
-          <input type="color" id="cfg-char-name-color" value="#ffffff">
-        </label>
-        <label>
-          <span>이름 정렬</span>
+      <div class="sub-body collapsed" id="char-text-body">
+        <div class="text-style-row">
+          <span class="row-label">이름</span>
+          <input type="number" class="size-input" id="cfg-char-name-size" value="18" min="1">
+          <input type="color" class="round-color" id="cfg-char-name-color" value="#ffffff">
+          <input type="text" class="hex-input" id="cfg-char-name-color-hex" value="#ffffff" spellcheck="false">
           <select id="cfg-char-name-align">
             <option value="left">왼쪽</option>
             <option value="center" selected>가운데</option>
             <option value="right">오른쪽</option>
           </select>
-        </label>
-      </div>
-
-      <div class="config-row">
-        <label>
-          <span>대사 크기</span>
-          <input type="number" id="cfg-char-dialogue-size" value="16" min="1">
-        </label>
-        <label>
-          <span>대사 색</span>
-          <input type="color" id="cfg-char-dialogue-color" value="#ffffff">
-        </label>
-        <label>
-          <span>대사 정렬</span>
+        </div>
+        <div class="text-style-row">
+          <span class="row-label">대사</span>
+          <input type="number" class="size-input" id="cfg-char-dialogue-size" value="16" min="1">
+          <input type="color" class="round-color" id="cfg-char-dialogue-color" value="#ffffff">
+          <input type="text" class="hex-input" id="cfg-char-dialogue-color-hex" value="#ffffff" spellcheck="false">
           <select id="cfg-char-dialogue-align">
             <option value="left" selected>왼쪽</option>
             <option value="center">가운데</option>
             <option value="right">오른쪽</option>
           </select>
-        </label>
+        </div>
       </div>
     </div>
 
     <div class="config-group">
-      <h4>GM 텍스트</h4>
+      <div class="group-head">
+        <h4>GM 텍스트</h4>
+        <button type="button" class="toggle-btn small" id="toggle-gm-text" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
+      </div>
 
-      <div class="config-row">
-        <label>
-          <span>이름 크기</span>
-          <input type="number" id="cfg-gm-name-size" value="18" min="1">
-        </label>
-        <label>
-          <span>이름 색</span>
-          <input type="color" id="cfg-gm-name-color" value="#ffffff">
-        </label>
-        <label>
-          <span>이름 정렬</span>
+      <div class="sub-body collapsed" id="gm-text-body">
+        <div class="text-style-row">
+          <span class="row-label">이름</span>
+          <input type="number" class="size-input" id="cfg-gm-name-size" value="18" min="1">
+          <input type="color" class="round-color" id="cfg-gm-name-color" value="#ffffff">
+          <input type="text" class="hex-input" id="cfg-gm-name-color-hex" value="#ffffff" spellcheck="false">
           <select id="cfg-gm-name-align">
             <option value="left">왼쪽</option>
             <option value="center" selected>가운데</option>
             <option value="right">오른쪽</option>
           </select>
-        </label>
-      </div>
-
-      <div class="config-row">
-        <label>
-          <span>대사 크기</span>
-          <input type="number" id="cfg-gm-dialogue-size" value="16" min="1">
-        </label>
-        <label>
-          <span>대사 색</span>
-          <input type="color" id="cfg-gm-dialogue-color" value="#ffffff">
-        </label>
-        <label>
-          <span>대사 정렬</span>
+        </div>
+        <div class="text-style-row">
+          <span class="row-label">대사</span>
+          <input type="number" class="size-input" id="cfg-gm-dialogue-size" value="16" min="1">
+          <input type="color" class="round-color" id="cfg-gm-dialogue-color" value="#ffffff">
+          <input type="text" class="hex-input" id="cfg-gm-dialogue-color-hex" value="#ffffff" spellcheck="false">
           <select id="cfg-gm-dialogue-align">
             <option value="left" selected>왼쪽</option>
             <option value="center">가운데</option>
             <option value="right">오른쪽</option>
           </select>
-        </label>
+        </div>
       </div>
     </div>
 
     <div class="config-group">
-      <h4>/desc 텍스트</h4>
-      <div class="config-row">
-        <label>
-          <span>글자 크기</span>
-          <input type="number" id="cfg-desc-size" value="20" min="1">
-        </label>
-        <label>
-          <span>글자 색</span>
-          <input type="color" id="cfg-desc-color" value="#ffffff">
-        </label>
-        <label>
-          <span>정렬</span>
+      <div class="group-head">
+        <h4>/desc 텍스트</h4>
+        <button type="button" class="toggle-btn small" id="toggle-desc-text" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
+      </div>
+
+      <div class="sub-body collapsed" id="desc-text-body">
+        <div class="text-style-row">
+          <span class="row-label">내용</span>
+          <input type="number" class="size-input" id="cfg-desc-size" value="20" min="1">
+          <input type="color" class="round-color" id="cfg-desc-color" value="#ffffff">
+          <input type="text" class="hex-input" id="cfg-desc-color-hex" value="#ffffff" spellcheck="false">
           <select id="cfg-desc-align">
             <option value="left">왼쪽</option>
             <option value="center" selected>가운데</option>
             <option value="right">오른쪽</option>
           </select>
-        </label>
+        </div>
       </div>
     </div>
 
     <div class="config-group">
-      <h4>캐릭터별 스타일</h4>
-      <p class="config-help">
-        특정 캐릭터만 기본 스타일과 다르게 표시하고 싶을 때 사용합니다.
-        아래에는 JavaScript 객체 형식으로 입력하세요. 비워두면 캐릭터 기본 스타일을 사용합니다.
-      </p>
-      <textarea id="cfg-character-styles" rows="9" spellcheck="false" placeholder='{
-  "홍길동": {
-    "name_font_color": "#ff8080",
-    "dialogue_font_color": "#ffecec",
-    "name_align": "center",
-    "dialogue_align": "left"
-  }
-}'></textarea>
+      <div class="group-head">
+        <h4>캐릭터별 설정</h4>
+        <button type="button" class="toggle-btn small" id="toggle-char-list" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
+      </div>
+
+      <div class="sub-body collapsed" id="char-list-body">
+        <p class="config-help">
+          캐릭터마다 스탠딩 크기와 채팅 스타일을 따로 지정할 수 있습니다.
+          이름을 비워두면 해당 캐릭터는 생성되는 코드에 포함되지 않습니다.
+        </p>
+
+        <div id="character-list" class="char-list"></div>
+
+        <button type="button" id="add-character" class="add-btn">+ 캐릭터 추가</button>
+      </div>
     </div>
 
     <div class="config-group">
-      <h4>대사 진행</h4>
-      <div class="config-row">
-        <label>
-          <span>최소 표시시간(ms)</span>
-          <input type="number" id="cfg-min-showtime" value="1000" min="0">
-        </label>
-        <label>
-          <span>글자당 표시시간</span>
-          <input type="number" id="cfg-showtime-ratio" value="20" min="0">
-        </label>
-        <label>
-          <span>자동복구 시간(ms)</span>
-          <input type="number" id="cfg-watchdog" value="15000" min="5000">
-        </label>
+      <div class="group-head">
+        <h4>대사 진행</h4>
+        <button type="button" class="toggle-btn small" id="toggle-dialogue-flow" title="펼치기"><i class="ph ph-caret-double-down"></i></button>
       </div>
 
-      <div class="config-row">
-        <label>
-          <span>줄간격 비율</span>
-          <input type="number" id="cfg-line-height" value="1.7" step="0.1" min="0.1">
-        </label>
-        <label>
-          <span>글자폭 보정</span>
-          <input type="number" id="cfg-letter-spacing" value="0.85" step="0.05" min="0.1">
-        </label>
-      </div>
-    </div>
+      <div class="sub-body collapsed" id="dialogue-flow-body">
+        <div class="config-row">
+          <label>
+            <span>최소 표시시간(ms)</span>
+            <input type="number" id="cfg-min-showtime" value="1000" min="0">
+          </label>
+          <label>
+            <span>글자당 표시시간</span>
+            <input type="number" id="cfg-showtime-ratio" value="20" min="0">
+          </label>
+          <label>
+            <span>자동복구 시간(ms)</span>
+            <input type="number" id="cfg-watchdog" value="15000" min="5000">
+          </label>
+        </div>
 
-    <div class="config-output">
-      <div class="output-head">
-        <h4>생성된 설정 코드</h4>
-        <button type="button" id="copy-config">복사</button>
+        <div class="config-row-2">
+          <label>
+            <span>줄간격 비율</span>
+            <input type="number" id="cfg-line-height" value="1.7" step="0.1" min="0.1">
+          </label>
+          <label>
+            <span>글자폭 보정</span>
+            <input type="number" id="cfg-letter-spacing" value="0.85" step="0.05" min="0.1">
+          </label>
+        </div>
       </div>
-      <textarea id="generated-config" rows="34" readonly spellcheck="false"></textarea>
-      <p class="config-help">
-        위 코드를 <code>Roll20 Portrait Visual Dialogue.js</code>의
-        <code>const vd_setting = { ... };</code> 부분과 교체하면 됩니다.
-      </p>
     </div>
   </section>
 
@@ -554,6 +762,11 @@
     return Number.isFinite(value) ? value : fallback;
   }
 
+  function normalizeHex(v){
+    const m = String(v || '').trim().match(/^#?([0-9a-fA-F]{6})$/);
+    return m ? ('#' + m[1].toLowerCase()) : null;
+  }
+
   function aliases(){
     return $('cfg-extra-aliases').value
       .split(',')
@@ -561,28 +774,278 @@
       .filter(Boolean);
   }
 
-  function characterStylesText(){
-    const raw = $('cfg-character-styles').value.trim();
-    if (!raw) return '{}';
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 4);
-    } catch (e) {
-      return raw;
-    }
-  }
-
-  function generate(){
-    const styles = characterStylesText()
+  function indentBlock(text){
+    return text
       .split('\n')
       .map(line => '    ' + line)
       .join('\n')
       .trimStart();
+  }
+
+  // ---------------------------------------------------
+  // 캐릭터별 설정 (스탠딩 크기 + 채팅 스타일을 하나로)
+  // ---------------------------------------------------
+  let chars = [];
+  let charSeq = 0;
+
+  function newChar(){
+    charSeq += 1;
+    return {
+      id: 'ch' + charSeq,
+      name: '',
+      open: true,
+      standingOpen: true,
+      chatOpen: true,
+      standingWidth: '',
+      standingHeight: '',
+      expressions: [],
+      nameColor: '#ffffff',
+      nameAlign: 'center',
+      dialogueColor: '#ffffff',
+      dialogueAlign: 'left'
+    };
+  }
+
+  function escAttr(v){
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
+  function alignOptions(current){
+    return ['left', 'center', 'right'].map(v => {
+      const label = v === 'left' ? '왼쪽' : v === 'center' ? '가운데' : '오른쪽';
+      return `<option value="${v}"${v === current ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+  }
+
+  function renderCharCard(c){
+    const exprRows = c.expressions.map((ex, i) => `
+      <div class="standing-row" data-eidx="${i}">
+        <input type="text" class="expr-name" data-field="expr-name" placeholder="표정 이름" value="${escAttr(ex.name)}">
+        <span class="mini-label">가로</span>
+        <input type="number" data-field="expr-width" value="${escAttr(ex.width)}">
+        <span class="mini-label">세로</span>
+        <input type="number" data-field="expr-height" value="${escAttr(ex.height)}">
+        <button type="button" class="icon-btn small danger" data-action="del-expr" title="삭제"><i class="ph ph-x"></i></button>
+      </div>`).join('');
+
+    return `
+    <div class="char-card" data-cid="${c.id}">
+      <div class="char-head">
+        <input type="text" class="char-name" data-field="name" placeholder="캐릭터 이름" value="${escAttr(c.name)}">
+        <button type="button" class="toggle-btn" data-action="toggle-char" title="${c.open ? '접기' : '펼치기'}"><i class="ph ${c.open ? 'ph-caret-double-up' : 'ph-caret-double-down'}"></i></button>
+        <button type="button" class="icon-btn danger" data-action="del-char" title="캐릭터 삭제"><i class="ph ph-x"></i></button>
+      </div>
+
+      <div class="char-body${c.open ? '' : ' collapsed'}">
+        <div class="sub-section">
+          <div class="sub-head">
+            <span>└ 스탠딩</span>
+            <button type="button" class="toggle-btn small" data-action="toggle-standing" title="${c.standingOpen ? '접기' : '펼치기'}"><i class="ph ${c.standingOpen ? 'ph-caret-double-up' : 'ph-caret-double-down'}"></i></button>
+          </div>
+          <div class="sub-body${c.standingOpen ? '' : ' collapsed'}">
+            <div class="standing-row">
+              <span class="row-label">기본</span>
+              <span class="mini-label">가로</span>
+              <input type="number" data-field="standing-width" value="${escAttr(c.standingWidth)}">
+              <span class="mini-label">세로</span>
+              <input type="number" data-field="standing-height" value="${escAttr(c.standingHeight)}">
+              <span class="row-spacer"></span>
+            </div>
+            ${exprRows}
+            <button type="button" class="add-btn" data-action="add-expr">+ 추가</button>
+            <div class="collapse-footer">
+              <button type="button" class="footer-collapse-btn" data-action="collapse-standing">접기 <i class="ph ph-caret-double-up"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub-section">
+          <div class="sub-head">
+            <span>└ 채팅 스타일</span>
+            <button type="button" class="toggle-btn small" data-action="toggle-chat" title="${c.chatOpen ? '접기' : '펼치기'}"><i class="ph ${c.chatOpen ? 'ph-caret-double-up' : 'ph-caret-double-down'}"></i></button>
+          </div>
+          <div class="sub-body${c.chatOpen ? '' : ' collapsed'}">
+            <div class="chat-row">
+              <span class="row-label">이름</span>
+              <input type="color" class="round-color" data-field="name-color" value="${c.nameColor}">
+              <input type="text" class="hex-input" data-field="name-color-hex" value="${c.nameColor}" spellcheck="false">
+              <select data-field="name-align">${alignOptions(c.nameAlign)}</select>
+            </div>
+            <div class="chat-row">
+              <span class="row-label">채팅</span>
+              <input type="color" class="round-color" data-field="dialogue-color" value="${c.dialogueColor}">
+              <input type="text" class="hex-input" data-field="dialogue-color-hex" value="${c.dialogueColor}" spellcheck="false">
+              <select data-field="dialogue-align">${alignOptions(c.dialogueAlign)}</select>
+            </div>
+            <p class="mini-note">크기는 기본 스타일을 따라갑니다.</p>
+            <div class="collapse-footer">
+              <button type="button" class="footer-collapse-btn" data-action="collapse-chat">접기 <i class="ph ph-caret-double-up"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="collapse-footer">
+          <button type="button" class="footer-collapse-btn" data-action="collapse-char">캐릭터 접기 <i class="ph ph-caret-double-up"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function renderChars(){
+    $('character-list').innerHTML = chars.map(renderCharCard).join('');
+  }
+
+  function findChar(cid){
+    return chars.find(c => c.id === cid);
+  }
+
+  const charListEl = $('character-list');
+
+  charListEl.addEventListener('input', e => {
+    const card = e.target.closest('.char-card');
+    if (!card) return;
+    const c = findChar(card.dataset.cid);
+    if (!c) return;
+    const field = e.target.dataset.field;
+
+    if (field === 'name') c.name = e.target.value;
+    else if (field === 'standing-width') c.standingWidth = e.target.value;
+    else if (field === 'standing-height') c.standingHeight = e.target.value;
+    else if (field === 'expr-name' || field === 'expr-width' || field === 'expr-height') {
+      const row = e.target.closest('.standing-row');
+      const ex = c.expressions[Number(row.dataset.eidx)];
+      if (!ex) return;
+      if (field === 'expr-name') ex.name = e.target.value;
+      if (field === 'expr-width') ex.width = e.target.value;
+      if (field === 'expr-height') ex.height = e.target.value;
+    } else if (field === 'name-color-hex' || field === 'dialogue-color-hex') {
+      const hex = normalizeHex(e.target.value);
+      if (!hex) return; // 아직 완성되지 않은 코드면 반영하지 않고 기다림
+      const row = e.target.closest('.chat-row');
+      const colorInput = row && row.querySelector('input[type="color"]');
+      if (colorInput) colorInput.value = hex;
+      if (field === 'name-color-hex') c.nameColor = hex;
+      else c.dialogueColor = hex;
+    } else {
+      return;
+    }
+    generate();
+  });
+
+  charListEl.addEventListener('change', e => {
+    const card = e.target.closest('.char-card');
+    if (!card) return;
+    const c = findChar(card.dataset.cid);
+    if (!c) return;
+    const field = e.target.dataset.field;
+
+    if (field === 'name-color' || field === 'dialogue-color') {
+      const row = e.target.closest('.chat-row');
+      const hexInput = row && row.querySelector('.hex-input');
+      if (hexInput) hexInput.value = e.target.value;
+      if (field === 'name-color') c.nameColor = e.target.value;
+      else c.dialogueColor = e.target.value;
+    } else if (field === 'name-align') c.nameAlign = e.target.value;
+    else if (field === 'dialogue-align') c.dialogueAlign = e.target.value;
+    else return;
+    generate();
+  });
+
+  charListEl.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const card = btn.closest('.char-card');
+    const c = card && findChar(card.dataset.cid);
+    const action = btn.dataset.action;
+
+    if (action === 'toggle-char' && c) { c.open = !c.open; renderChars(); generate(); }
+    else if (action === 'toggle-standing' && c) { c.standingOpen = !c.standingOpen; renderChars(); generate(); }
+    else if (action === 'toggle-chat' && c) { c.chatOpen = !c.chatOpen; renderChars(); generate(); }
+    else if (action === 'collapse-char' && c) { c.open = false; renderChars(); generate(); }
+    else if (action === 'collapse-standing' && c) { c.standingOpen = false; renderChars(); generate(); }
+    else if (action === 'collapse-chat' && c) { c.chatOpen = false; renderChars(); generate(); }
+    else if (action === 'del-char' && c) { chars = chars.filter(x => x.id !== c.id); renderChars(); generate(); }
+    else if (action === 'add-expr' && c) { c.expressions.push({name:'', width:'', height:''}); renderChars(); generate(); }
+    else if (action === 'del-expr' && c) {
+      const row = btn.closest('.standing-row');
+      c.expressions.splice(Number(row.dataset.eidx), 1);
+      renderChars();
+      generate();
+    }
+  });
+
+  $('add-character').addEventListener('click', () => {
+    chars.push(newChar());
+    renderChars();
+    generate();
+  });
+
+  function numOrNull(v){
+    if (v === '' || v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function buildStandingSizes(){
+    const out = {};
+    chars.forEach(c => {
+      const name = c.name.trim();
+      if (!name) return;
+
+      const entry = {};
+      const dw = numOrNull(c.standingWidth);
+      const dh = numOrNull(c.standingHeight);
+      if (dw !== null || dh !== null) {
+        entry.default = {};
+        if (dw !== null) entry.default.width = dw;
+        if (dh !== null) entry.default.height = dh;
+      }
+
+      c.expressions.forEach(ex => {
+        const exName = ex.name.trim();
+        if (!exName) return;
+        const ew = numOrNull(ex.width);
+        const eh = numOrNull(ex.height);
+        if (ew === null && eh === null) return;
+        entry[exName] = {};
+        if (ew !== null) entry[exName].width = ew;
+        if (eh !== null) entry[exName].height = eh;
+      });
+
+      if (Object.keys(entry).length) out[name] = entry;
+    });
+    return out;
+  }
+
+  function buildCharacterStyles(){
+    const out = {};
+    chars.forEach(c => {
+      const name = c.name.trim();
+      if (!name) return;
+      out[name] = {
+        name_font_color: c.nameColor,
+        name_align: c.nameAlign,
+        dialogue_font_color: c.dialogueColor,
+        dialogue_align: c.dialogueAlign
+      };
+    });
+    return out;
+  }
+
+  function generate(){
+    const styles = indentBlock(JSON.stringify(buildCharacterStyles(), null, 4));
+    const sizes = indentBlock(JSON.stringify(buildStandingSizes(), null, 4));
 
     const code = `const vd_setting = {
     max_number: ${num('cfg-max-number', 5)},
     width: ${num('cfg-width', 420)},
     height: ${num('cfg-height', 420)},
     fit_width: ${num('cfg-fit-width', 200)},
+
+    standing_sizes: ${sizes},
 
     use_emotion: ${$('cfg-use-emotion').checked},
     show_extra_standing: ${$('cfg-show-extra').checked},
@@ -624,8 +1087,6 @@
     queue_watchdog_ms: ${num('cfg-watchdog', 15000)}
 };`;
 
-    $('generated-config').value = code;
-
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({
         type: 'portrait-vd-setting-preview',
@@ -643,9 +1104,37 @@
   const configSection = $('vd-config');
   const toggleButton = $('toggle-config');
 
+  function setCaretIcon(btn, collapsed){
+    const icon = btn.querySelector('i');
+    if (!icon) return;
+    icon.className = 'ph ' + (collapsed ? 'ph-caret-double-down' : 'ph-caret-double-up');
+  }
+
+  // 버튼뿐 아니라 제목 줄(여백 포함) 아무 데나 눌러도 펼치기/접기가 되도록.
+  // 버튼 자체 클릭은 버튼의 click 리스너가 처리하므로 여기서는 건너뛴다(중복 토글 방지).
+  function makeRowClickable(rowEl, btnEl){
+    if (!rowEl || !btnEl) return;
+    rowEl.classList.add('clickable-head');
+    rowEl.addEventListener('click', e => {
+      if (e.target.closest('button')) return;
+      btnEl.click();
+    });
+  }
+
+  // 영역 맨 아래에 "접기(만 되는)" 링크를 하나 달아준다.
+  // 설정을 다 채운 뒤 다시 맨 위 버튼까지 스크롤해서 올라가지 않아도 되게.
+  function addCollapseFooter(body, collapseFn){
+    if (!body) return;
+    const footer = document.createElement('div');
+    footer.className = 'collapse-footer';
+    footer.innerHTML = '<button type="button" class="footer-collapse-btn">접기 <i class="ph ph-caret-double-up"></i></button>';
+    footer.querySelector('button').addEventListener('click', collapseFn);
+    body.appendChild(footer);
+  }
+
   toggleButton.addEventListener('click', function(){
     const collapsed = configSection.classList.toggle('collapsed');
-    this.textContent = collapsed ? '▼' : '▲';
+    setCaretIcon(this, collapsed);
     this.setAttribute('aria-expanded', String(!collapsed));
     this.setAttribute('aria-label', collapsed ? '설정 펼치기' : '설정 접기');
     this.title = collapsed ? '설정 펼치기' : '설정 접기';
@@ -656,20 +1145,57 @@
     }, 0);
   });
 
-  $('copy-config').addEventListener('click', async function(){
-    const text = $('generated-config').value;
-    try {
-      await navigator.clipboard.writeText(text);
-      this.textContent = '복사됨';
-      setTimeout(() => { this.textContent = '복사'; }, 1200);
-    } catch (e) {
-      $('generated-config').select();
-      document.execCommand('copy');
-      this.textContent = '복사됨';
-      setTimeout(() => { this.textContent = '복사'; }, 1200);
-    }
+  makeRowClickable(document.querySelector('.vd-config-head'), toggleButton);
+  addCollapseFooter($('vd-config').querySelector('.vd-config-body'), () => {
+    if (!configSection.classList.contains('collapsed')) toggleButton.click();
   });
 
+  function wireSectionToggle(btnId, bodyId){
+    const btn = $(btnId);
+    const body = $(bodyId);
+    if (!btn || !body) return;
+    btn.addEventListener('click', function(){
+      const collapsed = body.classList.toggle('collapsed');
+      setCaretIcon(this, collapsed);
+      this.title = collapsed ? '펼치기' : '접기';
+    });
+    makeRowClickable(btn.closest('.group-head'), btn);
+    addCollapseFooter(body, () => {
+      if (!body.classList.contains('collapsed')) btn.click();
+    });
+  }
+
+  wireSectionToggle('toggle-char-text', 'char-text-body');
+  wireSectionToggle('toggle-gm-text', 'gm-text-body');
+  wireSectionToggle('toggle-desc-text', 'desc-text-body');
+  wireSectionToggle('toggle-char-list', 'char-list-body');
+  wireSectionToggle('toggle-standing-config', 'standing-config-body');
+  wireSectionToggle('toggle-dialogue-flow', 'dialogue-flow-body');
+
+  // 컬러피커 옆 헥스 코드 칸 <-> 컬러피커 값 동기화 (고정 필드 전부)
+  function wireColorHex(colorId, hexId){
+    const colorEl = $(colorId);
+    const hexEl = $(hexId);
+    if (!colorEl || !hexEl) return;
+    hexEl.value = colorEl.value;
+    colorEl.addEventListener('input', () => { hexEl.value = colorEl.value; });
+    hexEl.addEventListener('input', () => {
+      const hex = normalizeHex(hexEl.value);
+      if (!hex) return;
+      colorEl.value = hex;
+      generate();
+    });
+  }
+
+  [
+    ['cfg-char-name-color', 'cfg-char-name-color-hex'],
+    ['cfg-char-dialogue-color', 'cfg-char-dialogue-color-hex'],
+    ['cfg-gm-name-color', 'cfg-gm-name-color-hex'],
+    ['cfg-gm-dialogue-color', 'cfg-gm-dialogue-color-hex'],
+    ['cfg-desc-color', 'cfg-desc-color-hex']
+  ].forEach(([colorId, hexId]) => wireColorHex(colorId, hexId));
+
+  renderChars();
   generate();
 })();
 </script>
