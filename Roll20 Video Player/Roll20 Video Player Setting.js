@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Video Player
 // @namespace    https://github.com/OHgolgyeo/script
-// @version      1.0
+// @version      1.1
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  롤20 채팅의 신호(CUE|url|시각|모드)를 감지해서, 영상을 소리와 함께 재생합니다. 재생이 가능한 영상은 mp4 등 직링크와 X(Twitter), 구글 드라이브, 유튜브 링크입니다. full(전체화면)/map(맵 화면에 꽉차게)/window(작은 창, 드래그·크기조절 가능) 세 가지 모드를 지원하고, 짝을 이루는 "Roll20 Video Player.js" 롤20 API 스크립트가 GM 쪽에 설치되어 있어야 신호가 옵니다.
 // @match        https://app.roll20.net/editor/*
@@ -17,6 +17,15 @@
 
   var CUE_PATTERN = /CUE\|(\S+)\|(\d+)\|(full|map|window)/;
   var WINDOW_HANDLE_HEIGHT = 22;
+
+  // map/window 모드는 "영상"만 잠깐 보여주는 용도라, 캐릭터 시트·핸드아웃·PDF·
+  // 주크박스·매크로창 같은 롤20 UI 창들은 항상 영상 위에서(가려지지 않고) 열려야
+  // 한다. 롤20의 이런 창들은 jQuery UI dialog로, 보통 z-index가 100 이상부터
+  // 시작해서 계속 올라간다. 반면 맵 캔버스 자체는 z-index가 거의 없다시피 하므로,
+  // "캔버스보다는 위, 롤20 UI 창들보다는 아래"인 낮은 값을 쓴다.
+  // (full 모드는 화면 전체를 덮는 게 원래 목적이라 그대로 최상단에 둔다.)
+  var CUTSCENE_FLOATING_Z_INDEX = 60;
+  var CUTSCENE_FULLSCREEN_Z_INDEX = 999999;
 
   function extractYouTubeId(url) {
     var m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{6,})/);
@@ -177,21 +186,21 @@
     if (isWindow) {
       overlay.style.cssText = [
         'position:fixed', 'display:flex', 'flex-direction:column',
-        'background:#000', 'z-index:999999',
+        'background:#000', 'z-index:' + CUTSCENE_FLOATING_Z_INDEX,
         'border-radius:8px', 'overflow:hidden',
         'box-shadow:0 6px 24px rgba(0,0,0,0.5)'
       ].join(';');
     } else if (isMap) {
       overlay.style.cssText = [
         'position:fixed', 'background:#000',
-        'z-index:999999', 'display:flex',
+        'z-index:' + CUTSCENE_FLOATING_Z_INDEX, 'display:flex',
         'align-items:center', 'justify-content:center',
         'overflow:hidden'
       ].join(';');
     } else {
       overlay.style.cssText = [
         'position:fixed', 'inset:0', 'background:#000',
-        'z-index:999999', 'display:flex',
+        'z-index:' + CUTSCENE_FULLSCREEN_Z_INDEX, 'display:flex',
         'align-items:center', 'justify-content:center'
       ].join(';');
     }
