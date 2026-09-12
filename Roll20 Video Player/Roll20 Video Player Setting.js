@@ -21,8 +21,6 @@
   var CUTSCENE_FLOATING_Z_INDEX = 200000;
   var CUTSCENE_FULLSCREEN_Z_INDEX = 999999;
 
-  // 핸드아웃/저널/캐릭터시트 팝업창(jQuery UI 다이얼로그)은 map/window 모드일 때도
-  // 컷신 오버레이보다 위에 떠 있어야 하므로, 이보다 더 높은 z-index를 강제로 유지시킨다.
   var ELEVATED_DIALOG_Z_INDEX = 200010;
   var ELEVATED_DIALOG_SELECTOR = '.ui-dialog, .block-submenu';
 
