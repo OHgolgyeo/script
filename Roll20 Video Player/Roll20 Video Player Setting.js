@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Roll20 Video Player
 // @namespace    https://github.com/OHgolgyeo/script
-// @version      1.1
+// @version      3.0
 // @author       오골계 (https://x.com/5golgyeo)
 // @description  롤20 채팅의 신호(CUE|url|시각|모드)를 감지해서, 영상을 소리와 함께 재생합니다. 재생이 가능한 영상은 mp4 등 직링크와 X(Twitter), 구글 드라이브, 유튜브 링크입니다. full(전체화면)/map(맵 화면에 꽉차게)/window(작은 창, 드래그·크기조절 가능) 세 가지 모드를 지원하고, 짝을 이루는 "Roll20 Video Player.js" 롤20 API 스크립트가 GM 쪽에 설치되어 있어야 신호가 옵니다.
 // @match        https://app.roll20.net/editor/*
@@ -18,14 +18,45 @@
   var CUE_PATTERN = /CUE\|(\S+)\|(\d+)\|(full|map|window)/;
   var WINDOW_HANDLE_HEIGHT = 22;
 
-  // map/window 모드는 "영상"만 잠깐 보여주는 용도라, 캐릭터 시트·핸드아웃·PDF·
-  // 주크박스·매크로창 같은 롤20 UI 창들은 항상 영상 위에서(가려지지 않고) 열려야
-  // 한다. 롤20의 이런 창들은 jQuery UI dialog로, 보통 z-index가 100 이상부터
-  // 시작해서 계속 올라간다. 반면 맵 캔버스 자체는 z-index가 거의 없다시피 하므로,
-  // "캔버스보다는 위, 롤20 UI 창들보다는 아래"인 낮은 값을 쓴다.
-  // (full 모드는 화면 전체를 덮는 게 원래 목적이라 그대로 최상단에 둔다.)
-  var CUTSCENE_FLOATING_Z_INDEX = 60;
+  var CUTSCENE_FLOATING_Z_INDEX = 200000;
   var CUTSCENE_FULLSCREEN_Z_INDEX = 999999;
+
+  // 핸드아웃/저널/캐릭터시트 팝업창(jQuery UI 다이얼로그)은 map/window 모드일 때도
+  // 컷신 오버레이보다 위에 떠 있어야 하므로, 이보다 더 높은 z-index를 강제로 유지시킨다.
+  var ELEVATED_DIALOG_Z_INDEX = 200010;
+  var ELEVATED_DIALOG_SELECTOR = '.ui-dialog, .block-submenu';
+
+  var dialogElevationObserver = null;
+  var dialogElevationInterval = null;
+
+  function elevateDialogs() {
+    document.querySelectorAll(ELEVATED_DIALOG_SELECTOR).forEach(function (dialog) {
+      dialog.style.setProperty('z-index', ELEVATED_DIALOG_Z_INDEX, 'important');
+    });
+  }
+
+  function startDialogElevation() {
+    elevateDialogs();
+    if (!dialogElevationObserver) {
+      dialogElevationObserver = new MutationObserver(elevateDialogs);
+      dialogElevationObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    if (!dialogElevationInterval) {
+      // 롤20이 창을 클릭/포커스할 때 자체적으로 z-index를 재조정하는 경우를 대비한 보강용 폴링
+      dialogElevationInterval = setInterval(elevateDialogs, 500);
+    }
+  }
+
+  function stopDialogElevation() {
+    if (dialogElevationObserver) {
+      dialogElevationObserver.disconnect();
+      dialogElevationObserver = null;
+    }
+    if (dialogElevationInterval) {
+      clearInterval(dialogElevationInterval);
+      dialogElevationInterval = null;
+    }
+  }
 
   function extractYouTubeId(url) {
     var m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{6,})/);
@@ -302,6 +333,7 @@
       if (onDragEnd) document.removeEventListener('mouseup', onDragEnd);
       if (onWindowResizeMove) document.removeEventListener('mousemove', onWindowResizeMove);
       if (onWindowResizeEnd) document.removeEventListener('mouseup', onWindowResizeEnd);
+      stopDialogElevation();
       overlay.remove();
     }
 
@@ -412,6 +444,10 @@
     });
 
     document.body.appendChild(overlay);
+
+    if (isFloating) {
+      startDialogElevation();
+    }
 
     if (media.tagName === 'VIDEO') {
       var playPromise = media.play();
